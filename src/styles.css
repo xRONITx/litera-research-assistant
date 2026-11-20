@@ -110,6 +110,30 @@ body,.app-shell,.main-area,.conversation{font-family:var(--ui-font);background:v
 :root[data-theme] .new-chat,:root[data-theme] .suggestion,:root[data-theme] .profile-button,:root[data-theme] .sign-in-button,:root[data-theme] .composer,:root[data-theme] .research-progress{background:color-mix(in srgb,var(--user-background) 96%,var(--user-foreground) 4%)!important}
 :root[data-theme] .history-active,:root[data-theme] .history-row:hover,:root[data-theme] .new-chat:hover,:root[data-theme] .suggestion:hover{background:color-mix(in srgb,var(--user-accent) 10%,var(--user-background))!important}
 :root[data-theme] button:focus-visible,:root[data-theme] input:focus-visible,:root[data-theme] textarea:focus-visible{outline-color:color-mix(in srgb,var(--user-accent) 42%,white)}
+:root[data-theme="dark"]{color-scheme:dark;background:#000;color:#f0f0f0}
+:root[data-theme="dark"] body,:root[data-theme="dark"] .app-shell,:root[data-theme="dark"] .main-area,:root[data-theme="dark"] .conversation{background:var(--user-background,#000)!important;color:var(--user-foreground,#f0f0f0)!important}
+:root[data-theme="dark"] .sidebar{background:color-mix(in srgb,var(--user-background,#000) 94%,var(--user-foreground,#f0f0f0) 6%)!important;border-color:#292929}
+:root[data-theme="dark"] .topbar{background:color-mix(in srgb,var(--user-background,#000) 94%,transparent)!important;border-color:#242424}
+:root[data-theme="dark"] .appearance-trigger,:root[data-theme="dark"] .appearance-panel{background:color-mix(in srgb,var(--user-background,#000) 90%,var(--user-foreground,#f0f0f0) 10%)!important;color:var(--user-foreground,#ededed);border-color:#343434}
+:root[data-theme="dark"] .appearance-row select,:root[data-theme="dark"] .advanced-control select,:root[data-theme="dark"] .color-row>input[type=color],:root[data-theme="dark"] .mode-options{background:#111!important;color:#ededed;border-color:#363636}
+:root[data-theme="dark"] .mode-options button.selected{background:#292929;color:#fff}
+:root[data-theme="dark"] .new-chat,:root[data-theme="dark"] .suggestion,:root[data-theme="dark"] .profile-button,:root[data-theme="dark"] .sign-in-button,:root[data-theme="dark"] .composer,:root[data-theme="dark"] .research-progress,:root[data-theme="dark"] .account-menu,:root[data-theme="dark"] .account-menu button{background:color-mix(in srgb,var(--user-background,#000) 91%,var(--user-foreground,#f0f0f0) 9%)!important;border-color:#303030;color:var(--user-foreground,#e8e8e8)}
+:root[data-theme="dark"] .new-chat:hover,:root[data-theme="dark"] .suggestion:hover,:root[data-theme="dark"] .history-active,:root[data-theme="dark"] .history-row:hover,:root[data-theme="dark"] .account-row:hover,:root[data-theme="dark"] .account-menu button:hover{background:#222!important;border-color:#414141}
+:root[data-theme="dark"] .welcome-icon,:root[data-theme="dark"] .assistant-avatar,:root[data-theme="dark"] .auth-symbol,:root[data-theme="dark"] .avatar,:root[data-theme="dark"] .user-avatar{background:#222!important;border-color:#383838;color:var(--user-accent)}
+:root[data-theme="dark"] .user-message-text{background:#1c1c1c!important;color:#eee!important}
+:root[data-theme="dark"] .progress-label,:root[data-theme="dark"] .review-result,:root[data-theme="dark"] .source-list,:root[data-theme="dark"] .auth-card h1,:root[data-theme="dark"] .auth-modal h2{color:#e6e6e6}
+:root[data-theme="dark"] .progress-caption,:root[data-theme="dark"] .progress-label b,:root[data-theme="dark"] .sidebar-label,:root[data-theme="dark"] .history-empty,:root[data-theme="dark"] .account-copy small,:root[data-theme="dark"] .privacy-note,:root[data-theme="dark"] .welcome-state>p,:root[data-theme="dark"] .composer-hint,:root[data-theme="dark"] .composer-footnote,:root[data-theme="dark"] .source-detail small,:root[data-theme="dark"] .result-note,:root[data-theme="dark"] .appearance-row small,:root[data-theme="dark"] .appearance-panel-heading p{color:#a3a3a3}
+:root[data-theme="dark"] .evidence-callout,:root[data-theme="dark"] .auth-notice{background:#1a1a1a!important;border-color:#343434;color:#c9c9c9}
+:root[data-theme="dark"] .sources-toggle,:root[data-theme="dark"] .source-item,:root[data-theme="dark"] .appearance-row,:root[data-theme="dark"] .appearance-section-title,:root[data-theme="dark"] .appearance-advanced,:root[data-theme="dark"] .sidebar-bottom{border-color:#303030}
+:root[data-theme="dark"] .source-item:hover,:root[data-theme="dark"] .modal-close:hover{background:#1e1e1e}
+:root[data-theme="dark"] .sources-toggle span,:root[data-theme="dark"] .source-num{background:#242424!important;color:var(--user-accent)}
+:root[data-theme="dark"] .source-detail strong{color:#e5e5e5}
+:root[data-theme="dark"] .auth-card,:root[data-theme="dark"] .auth-modal{background:#171717;border-color:#333}
+:root[data-theme="dark"] .auth-card input,:root[data-theme="dark"] .auth-modal input{background:#101010;border-color:#383838;color:#eee}
+:root[data-theme="dark"] .sample-link,:root[data-theme="dark"] .auth-sample-link{background:#171717;border-color:#333;color:#ddd}
+:root[data-theme="dark"] .sample-link:hover,:root[data-theme="dark"] .auth-sample-link:hover{background:#222;border-color:#444;color:#fff}
+:root[data-theme="dark"] .progress-bar{background:#303030}
+:root[data-theme="dark"] ::selection{background:color-mix(in srgb,var(--user-accent) 70%,#000);color:#fff}
 .topbar{height:60px;padding:0 32px;backdrop-filter:blur(12px)}
 .topbar-actions{gap:12px}
 .appearance-trigger{width:38px;height:38px;justify-content:center;padding:0;border-radius:11px;color:var(--user-accent,#54745d);transition:transform .16s ease,background .16s ease,border-color .16s ease,box-shadow .16s ease}
