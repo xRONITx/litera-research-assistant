@@ -10,11 +10,12 @@ Updated: 2026-11-20
 - Semantic Scholar search and ChromaDB local retrieval.
 - Gemini primary, Groq fallback, optional Ollama local provider.
 - Environment templates and Vercel, Render, and Docker deployment configuration.
+- Public GitHub repository and GitHub Pages build/deploy workflow.
 - Architecture, setup, limitations, and evaluation status documented.
 
 ## Remaining
 
-- Add provider credentials in the deployment environment and complete a live hosted run.
+- Add a deployed FastAPI URL as the GitHub Pages `VITE_API_URL` repository variable and configure model credentials on the API host.
 - Run the planned RAGAS evaluation and publish measured results.
 - Add durable job persistence for production use.
 - Record a demo video after deployment.

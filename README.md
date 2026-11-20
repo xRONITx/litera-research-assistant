@@ -112,6 +112,10 @@ curl -X POST http://localhost:8000/query \
 
 Import the repository into Vercel. The included `vercel.json` builds the Vite app. Set `VITE_API_URL` to the deployed API origin.
 
+### Frontend on GitHub Pages
+
+The `Deploy site to GitHub Pages` workflow publishes the static frontend at `https://xronitx.github.io/litera-research-assistant/`. Add a repository Actions variable named `VITE_API_URL` with the FastAPI service origin to enable live research runs; without it, the sample review remains available and the form clearly reports sample mode.
+
 ### API on Render
 
 Create a Render Web Service from the repository and use the included `render.yaml`. Add `GEMINI_API_KEY` (and optionally `GROQ_API_KEY`) as secret environment variables. Set `CORS_ORIGINS` to the exact deployed frontend origin, with no trailing slash. Free instances can sleep when idle; the first request may be slow.
