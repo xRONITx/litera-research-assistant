@@ -25,6 +25,9 @@ jobs:
         env:
           GITHUB_PAGES: "true"
           VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_REQUIRE_AUTH: ${{ vars.VITE_REQUIRE_AUTH }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

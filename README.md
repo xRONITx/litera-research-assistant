@@ -1,65 +1,41 @@
-# Litera — Research, with receipts.
+# Litera
 
-**An inspectable multi-agent research assistant that turns a research question into a source-grounded first-pass literature review.** Litera decomposes a question, searches real academic papers, retrieves relevant evidence, drafts a synthesis with inline citations, and gives a critic one bounded revision. The interface exposes the sources and run trace.
+**Ask a research question. Get a literature review with linked academic sources.** Litera is a web app for students and early researchers, built around a simple chat-style workspace.
 
-**Repository:** [github.com/xRONITx/litera-research-assistant](https://github.com/xRONITx/litera-research-assistant)
-**Live demo:** [xronitx.github.io/litera-research-assistant](https://xronitx.github.io/litera-research-assistant/)
+[Live website](https://xronitx.github.io/litera-research-assistant/) · [Source code](https://github.com/xRONITx/litera-research-assistant)
 
-> This capstone project is a research aid, not a substitute for reading primary studies. The included sleep example is a clearly labeled demonstration. Live research requires your own free-tier model key. Evaluation is planned; no RAGAS scores or measured results are claimed yet.
+> **Deployment status:** GitHub Pages hosts the frontend. Live research and sign-in become available after the API, model provider, and Supabase settings in [Deployment setup](#deployment-setup) are configured. The app never includes a model API key in browser code. Free model accounts have usage limits; the shared service is capped at three reviews per signed-in user each day.
 
-## Product preview
+## What it does
 
-Litera is a responsive React application with a FastAPI API. Try the example review in the interface without API credentials, or configure a model provider and run a live literature search.
+- Accepts custom research questions.
+- Searches academic papers with Semantic Scholar.
+- Retrieves relevant abstracts and drafts a structured synthesis with linked citations.
+- Checks the draft once for coverage and citation issues, then can revise it once.
+- Shows the papers used and lets users copy or revisit reviews in the same browser.
+- Supports email sign-in and sign-up through Supabase Auth.
+- Keeps Gemini and Groq API keys on the FastAPI server.
 
-## Features
+The results are a first pass for research. Always check the original papers before citing them. The app currently searches paper records and abstracts; it does not retrieve paywalled full text or accept uploaded papers.
 
-- **Visible state graph:** planner → academic researcher → RAG-backed analyst → critic, with a single bounded revision edge.
-- **Academic search:** Semantic Scholar's paper search API, returning paper metadata and abstracts.
-- **Retrieval-augmented drafting:** abstracts are embedded and retrieved with ChromaDB's local embedding function when installed and available.
-- **Citations from retrieved records:** bibliography metadata is sourced from returned papers; inline numeric citations link to those source records.
-- **Provider adapter:** Gemini by default, Groq as a configured fallback, or local Ollama when explicitly enabled.
-- **Inspectability:** background job status, visible run trace, paper list, error states, and health endpoint.
-- **No paid service requirement:** designed for free tiers and local development. Free-tier availability and quotas are controlled by each provider and can change.
+## Built with
 
-## Architecture
-
-```mermaid
-flowchart LR
-    U[Research question] --> P[Planner agent\nstructured angles]
-    P --> S[Research agent\nSemantic Scholar]
-    S --> V[(ChromaDB\nlocal vector memory)]
-    V --> A[Analysis agent\nsource-grounded synthesis]
-    A --> C[Critic agent\ncoverage and citations]
-    C -->|one revision| A
-    C --> R[Report + source list + trace]
-    R --> UI[React research studio]
-    UI --> API[FastAPI job API]
-    API --> P
-```
-
-The workflow is implemented as a LangGraph state graph. FastAPI runs it as a background job. Job state currently lives in process memory; configure persistent storage before operating across restarts or multiple instances.
-
-## Stack
-
-| Layer | Technology |
+| Part | Technology |
 |---|---|
-| Frontend | React 18, TypeScript, Vite |
+| Web app | React, TypeScript, Vite |
 | API | FastAPI, Pydantic, Uvicorn |
-| Orchestration | LangGraph |
-| Academic search | Semantic Scholar Graph API |
-| Vector retrieval | ChromaDB local client |
-| Model providers | Gemini API, Groq API, optional Ollama |
-| Hosting configuration | Vercel (frontend), Render (API), Docker |
+| Research workflow | LangGraph |
+| Paper search | Semantic Scholar |
+| Retrieval | ChromaDB |
+| Language models | Gemini Flash or Groq Llama, with optional local Ollama |
+| Sign-in | Supabase Auth |
+| Hosting | GitHub Pages (web), Render (API template) |
 
 ## Run locally
 
-### Requirements
+Requirements: Node.js 20+, Python 3.11+, and a free Gemini or Groq API key. Local sign-in is optional by default.
 
-- Node.js 20 or newer
-- Python 3.11 or newer
-- A free Gemini or Groq API key for live runs, or a local Ollama installation
-
-### 1. Configure the API
+### Start the API
 
 ```powershell
 python -m venv .venv
@@ -68,19 +44,17 @@ pip install -r requirements.txt
 Copy-Item .env.example backend/.env
 ```
 
-Add `GEMINI_API_KEY` to `backend/.env`. `GROQ_API_KEY` is optional and used if Gemini is rate-limited or unavailable. For local inference, set `LLM_PROVIDER=ollama` and set `OLLAMA_MODEL` to a model already pulled in Ollama.
-
-Start FastAPI from the repository root:
+Add `GEMINI_API_KEY` or `GROQ_API_KEY` to `backend/.env`. Gemini is tried first by default; Groq is used as a fallback when configured. Then start the API from the repository root:
 
 ```powershell
 uvicorn backend.main:app --reload --port 8000
 ```
 
-API docs: [http://localhost:8000/docs](http://localhost:8000/docs) · Health: [http://localhost:8000/health](http://localhost:8000/health)
+API documentation: [localhost:8000/docs](http://localhost:8000/docs) · Health: [localhost:8000/health](http://localhost:8000/health)
 
-### 2. Start the web app
+### Start the web app
 
-In another terminal at the repository root:
+In another terminal, from the repository root:
 
 ```powershell
 npm install
@@ -88,18 +62,20 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173). For live reports, use a sufficiently specific question. The API polls job status and retrieves the final report when ready.
+Open [localhost:5173](http://localhost:5173), enter any research question, and press Enter or click the arrow.
 
-## API
+To enable sign-in locally, create a Supabase project, set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_REQUIRE_AUTH=true` in the frontend `.env`, then set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `REQUIRE_AUTH=true` in `backend/.env`. For local development without Supabase, leave `VITE_REQUIRE_AUTH` and `REQUIRE_AUTH` false.
+
+## API routes
 
 | Method | Route | Purpose |
 |---|---|---|
-| `GET` | `/health` | Health check |
-| `POST` | `/query` | Start a background run; returns `job_id` |
-| `GET` | `/status/{job_id}` | Read progress and trace |
-| `GET` | `/report/{job_id}` | Fetch the completed report and sources |
+| `GET` | `/health` | Read API, sign-in, and model readiness flags |
+| `POST` | `/query` | Start a review; requires a valid Supabase session when auth is enabled |
+| `GET` | `/status/{job_id}` | Read progress for the signed-in user's run |
+| `GET` | `/report/{job_id}` | Fetch that user's completed review and sources |
 
-Example:
+Example local request:
 
 ```bash
 curl -X POST http://localhost:8000/query \
@@ -107,59 +83,67 @@ curl -X POST http://localhost:8000/query \
   -d '{"question":"How does sleep quality affect academic performance in university students?"}'
 ```
 
-## Deploy
+When sign-in is enabled, send `Authorization: Bearer <supabase-access-token>` with the request. Job status and report routes are scoped to the authenticated user.
 
-### Frontend on Vercel
+## Deployment setup
 
-Import the repository into Vercel. The included `vercel.json` builds the Vite app. Set `VITE_API_URL` to the deployed API origin.
+### 1. Create the free-tier service accounts
 
-### Frontend on GitHub Pages
+- Create a Supabase project and enable email/password authentication.
+- Create a Gemini API key or a Groq API key. Keep the key private; do not put it in a `VITE_` variable or commit it.
+- Import the repository into Render and create the API service from `render.yaml`.
 
-The `Deploy site to GitHub Pages` workflow publishes the static frontend at `https://xronitx.github.io/litera-research-assistant/`. Add a repository Actions variable named `VITE_API_URL` with the FastAPI service origin to enable live research runs; without it, the sample review remains available and the form clearly reports sample mode.
+### 2. Configure the API on Render
 
-### API on Render
+Set these service environment variables in Render:
 
-Create a Render Web Service from the repository and use the included `render.yaml`. Add `GEMINI_API_KEY` (and optionally `GROQ_API_KEY`) as secret environment variables. Set `CORS_ORIGINS` to the exact deployed frontend origin, with no trailing slash. Free instances can sleep when idle; the first request may be slow.
+| Variable | Value |
+|---|---|
+| `GEMINI_API_KEY` or `GROQ_API_KEY` | Your provider's server-side API key |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase publishable/anon key |
+| `REQUIRE_AUTH` | `true` |
+| `DAILY_RESEARCH_LIMIT` | `3` |
+| `CORS_ORIGINS` | `https://xronitx.github.io` |
 
-The API has in-memory job state and a local vector client, so a restart loses active jobs. For a persistent public deployment, add a durable job store and suitable persistent vector storage before relying on saved reports.
+The deployment tries Gemini first and Groq second when both are configured. Provider free tiers and model names can change. Each signed-in user is limited to three requests per rolling day to preserve the shared free quota.
 
-### Docker
+### 3. Configure the GitHub Pages frontend
 
-```bash
-docker build -t litera-web .
-docker run --rm -p 8080:80 litera-web
-```
+The [Pages workflow](.github/workflows/pages.yml) builds and publishes the website on pushes to `main`. In the GitHub repository, add these **Actions variables** under **Settings → Secrets and variables → Actions → Variables**:
 
-Build the API separately with `docker build -f Dockerfile.backend -t litera-api .` and provide model keys through environment variables.
+| Variable | Value |
+|---|---|
+| `VITE_API_URL` | The Render service origin, such as `https://litera-api.onrender.com` |
+| `VITE_SUPABASE_URL` | The same Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | The same Supabase publishable/anon key |
+| `VITE_REQUIRE_AUTH` | `true` |
 
-## Evaluation status
+The Supabase anon key is intended for browser use; enable Supabase email confirmation and configure allowed redirect URLs to include `https://xronitx.github.io/litera-research-assistant/`. Model API keys belong only in Render's protected environment settings.
 
-RAGAS evaluation is a planned project phase. A hand-built question set, references, baseline comparison, and measured faithfulness, answer relevance, and context precision scores have **not** been produced yet. Do not report sample or placeholder numbers as evaluation results. See [docs/evaluation.md](docs/evaluation.md) for the reporting template and next steps.
+After setting the variables, rerun **Deploy site to GitHub Pages** from the repository's Actions tab. The frontend is static; it cannot run research until `VITE_API_URL` points to a deployed API with valid provider credentials.
 
-## Limitations
+## Important deployment limits
 
-- Search results and abstracts depend on Semantic Scholar coverage and rate limits; not every paper has an abstract, DOI, or open full text.
-- The current RAG layer indexes returned abstracts. It does not download or parse paywalled papers or user PDFs.
-- A citation is linked to a retrieved paper record; this does not prove every adjacent sentence is supported by that paper.
-- Model output can contain errors. The critic is a bounded review pass, not a guarantee of correctness.
-- Job state is in memory; deployed instances can lose it on restart.
-- No evaluation results exist yet.
+- Render free services may sleep when idle, so the first request can take longer.
+- Job state is currently held in API process memory. A restart can lose active reviews; add durable storage before relying on saved server-side history.
+- User review history is stored in that browser, separated by signed-in account. It does not yet sync between devices.
+- Shared model keys have provider quotas. The per-user limit is a basic guard; production use should add durable rate limiting and usage monitoring.
+- Semantic Scholar results can be incomplete, and many records only expose abstracts.
+- Evaluation has not been run. No RAGAS scores or baseline comparisons are claimed. See [the evaluation plan](docs/evaluation.md).
 
-## Roadmap
+## Project progress
 
-- [x] React research workspace and responsive review UI
-- [x] FastAPI job/status/report endpoints
-- [x] LangGraph planner, researcher, analyst, critic, and bounded revision
-- [x] Semantic Scholar search and source-linked report
-- [x] Gemini/Groq provider adapter and optional Ollama provider
-- [ ] RAGAS dataset, baseline, and measured report
-- [ ] Persistent job storage and saved review history
-- [ ] PDF uploads and export formats
-- [ ] Public deployment link and demo video
-
-## Project status
-
-This repository is a working capstone implementation in active development. The frontend sample is illustrative; live research is the real end-to-end pipeline. Deployment and measured evaluation remain to be completed.
+- [x] Chat-style research interface and custom question entry
+- [x] FastAPI query, status, report, and health routes
+- [x] Academic search, vector retrieval, synthesis, and bounded review pass
+- [x] Gemini/Groq provider adapter with server-side keys
+- [x] Supabase email sign-in and per-user report access
+- [x] GitHub Pages deployment workflow and public frontend
+- [ ] Configure the Render API and provider credentials
+- [ ] Configure Supabase and connect the hosted frontend
+- [ ] Measure RAGAS results and publish the evaluation report
+- [ ] Add durable job storage and a demo video
 
 ## License
 

@@ -6,13 +6,13 @@ import os
 import re
 import time
 import uuid
-from collections.abc import Callable
 from typing import Any, TypedDict
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -33,8 +33,43 @@ class Job(TypedDict, total=False):
     report: dict[str, Any]
     error: str
     started_at: float
+    user_id: str
 
 JOBS: dict[str, Job] = {}
+bearer = HTTPBearer(auto_error=False)
+
+def auth_required() -> bool:
+    return os.getenv("REQUIRE_AUTH", "false").lower() == "true"
+
+async def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> str:
+    auth_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not auth_url or not anon_key:
+        if auth_required():
+            raise HTTPException(status_code=503, detail="Sign-in is temporarily unavailable.")
+        return "anonymous"
+    if not credentials:
+        if auth_required():
+            raise HTTPException(status_code=401, detail="Sign in to start a literature review.")
+        return "anonymous"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(f"{auth_url}/auth/v1/user", headers={"apikey": anon_key, "Authorization": f"Bearer {credentials.credentials}"})
+        if response.status_code == 401:
+            raise HTTPException(status_code=401, detail="Your session has expired. Sign in again.")
+        response.raise_for_status()
+        user_id = response.json().get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Your session could not be verified.")
+        return str(user_id)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="Sign-in is temporarily unavailable.") from exc
+
+def owned_job(job_id: str, user_id: str) -> Job:
+    job = JOBS.get(job_id)
+    if not job or job.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail="Research run not found.")
+    return job
 
 def trace(job: Job, name: str, detail: str, status: str = "completed") -> None:
     job.setdefault("trace", []).append({"step": name, "detail": detail, "status": status, "timestamp": int(time.time())})
@@ -63,7 +98,7 @@ async def llm(prompt: str, *, json_mode: bool = False) -> str:
         for provider in configured:
             try:
                 if provider == "gemini":
-                    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+                    model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
                     body: dict[str, Any] = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.2}}
                     if json_mode:
                         body["generationConfig"]["responseMimeType"] = "application/json"
@@ -74,7 +109,7 @@ async def llm(prompt: str, *, json_mode: bool = False) -> str:
                     response.raise_for_status()
                     return response.json()["candidates"][0]["content"]["parts"][0]["text"]
                 if provider == "groq":
-                    body = {"model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"), "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
+                    body = {"model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
                     if json_mode:
                         body["response_format"] = {"type": "json_object"}
                     response = await client.post("https://api.groq.com/openai/v1/chat/completions", json=body, headers={"Authorization": f"Bearer {os.environ['GROQ_API_KEY']}"})
@@ -103,7 +138,7 @@ async def planner(state: dict[str, Any]) -> dict[str, Any]:
         angles = [state["question"], f"Evidence and findings about {state['question']}", f"Limitations and research gaps in {state['question']}"]
     state["angles"] = angles
     state["job"]["progress"] = 15
-    state["job"]["stage"] = "Searching academic literature"
+    state["job"]["stage"] = "Searching academic papers"
     trace(state["job"], "Question planning", f"Question decomposed into {len(angles)} research angles")
     return state
 
@@ -138,7 +173,7 @@ async def researcher(state: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("Academic search returned no papers. Try a broader research question.")
     state["papers"] = papers[:20]
     state["job"]["progress"] = 42
-    state["job"]["stage"] = "Indexing source passages"
+    state["job"]["stage"] = "Selecting relevant studies"
     trace(state["job"], "Academic search", f"Semantic Scholar returned {len(papers)} unique papers")
     return state
 
@@ -169,7 +204,7 @@ async def analyst(state: dict[str, Any]) -> dict[str, Any]:
         state["revision_used"] = True
     context = vector_context(state["papers"], state["question"])
     state["job"]["progress"] = 58
-    state["job"]["stage"] = "Synthesizing evidence"
+    state["job"]["stage"] = "Writing your review"
     trace(state["job"], "Source analysis", f"{len(context)} source passages retrieved for synthesis")
     citations = [source_record(p, i + 1) for i, p in enumerate(context)]
     evidence = "\n\n".join(f"[{i+1}] {p.get('title')} ({p.get('year') or 'n.d.'}, {p.get('venue') or 'venue not listed'}). {p.get('abstract') or ''}" for i, p in enumerate(context))
@@ -181,7 +216,7 @@ async def analyst(state: dict[str, Any]) -> dict[str, Any]:
 
 async def critic(state: dict[str, Any]) -> dict[str, Any]:
     state["job"]["progress"] = 76
-    state["job"]["stage"] = "Critic review"
+    state["job"]["stage"] = "Checking source citations"
     prompt = f"Review this literature review. Return JSON only: {{\"revise\": true/false, \"feedback\": \"specific short actionable feedback\"}}. Flag missing source citations, unsupported assertions, or question aspects not covered. Ask for revision only for material issues. Question: {state['question']}\nSources available: {len(state['citations'])}\nDraft:\n{state['draft']}"
     try:
         result = json_from_text(await llm(prompt, json_mode=True))
@@ -220,14 +255,14 @@ def build_graph():
 async def run_job(job_id: str) -> None:
     job = JOBS[job_id]
     job["status"] = "running"
-    job["stage"] = "Planning research"
+    job["stage"] = "Finding key research themes"
     try:
         graph = build_graph()
         result = await graph.ainvoke({"question": job["question"], "job": job, "revision_used": False})
         report = {"question": job["question"], "angles": result.get("angles", []), "review": result.get("draft", ""), "sources": result.get("citations", []), "critic": result.get("critic", {}), "generated_at": int(time.time())}
         job["report"] = report
         job["progress"] = 100
-        job["stage"] = "Research complete"
+        job["stage"] = "Review ready"
         job["status"] = "completed"
         trace(job, "Review complete", f"Review generated with {len(report['sources'])} cited sources")
     except Exception as exc:
@@ -242,27 +277,27 @@ async def root() -> dict[str, str]:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "healthy", "service": "litera-api"}
+    return {"status": "healthy", "service": "litera-api", "auth_required": str(auth_required()).lower(), "auth_configured": str(bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_ANON_KEY"))).lower(), "model_configured": str(bool(os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY") or os.getenv("LLM_PROVIDER") == "ollama")).lower()}
 
 @app.post("/query", status_code=202)
-async def submit_query(payload: QueryRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+async def submit_query(payload: QueryRequest, background_tasks: BackgroundTasks, user_id: str = Depends(current_user)) -> dict[str, str]:
+    daily_limit = max(1, int(os.getenv("DAILY_RESEARCH_LIMIT", "3")))
+    recent_runs = sum(1 for job in JOBS.values() if job.get("user_id") == user_id and job.get("started_at", 0) > time.time() - 86400)
+    if recent_runs >= daily_limit:
+        raise HTTPException(status_code=429, detail=f"You've reached today's research limit of {daily_limit} reviews. Come back tomorrow.")
     job_id = str(uuid.uuid4())
-    JOBS[job_id] = {"id": job_id, "question": payload.question.strip(), "status": "queued", "stage": "Queued", "progress": 0, "trace": [], "started_at": time.time()}
+    JOBS[job_id] = {"id": job_id, "question": payload.question.strip(), "status": "queued", "stage": "Finding research angles", "progress": 0, "trace": [], "started_at": time.time(), "user_id": user_id}
     background_tasks.add_task(run_job, job_id)
     return {"job_id": job_id, "status": "queued"}
 
 @app.get("/status/{job_id}")
-async def get_status(job_id: str) -> dict[str, Any]:
-    job = JOBS.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Research job not found. Jobs are held in memory and may be lost when the API restarts.")
+async def get_status(job_id: str, user_id: str = Depends(current_user)) -> dict[str, Any]:
+    job = owned_job(job_id, user_id)
     return {k: job.get(k) for k in ("id", "question", "status", "stage", "progress", "trace", "error")}
 
 @app.get("/report/{job_id}")
-async def get_report(job_id: str) -> dict[str, Any]:
-    job = JOBS.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Research job not found.")
+async def get_report(job_id: str, user_id: str = Depends(current_user)) -> dict[str, Any]:
+    job = owned_job(job_id, user_id)
     if job["status"] != "completed":
         raise HTTPException(status_code=409, detail="This research run has not completed.")
     return job["report"]

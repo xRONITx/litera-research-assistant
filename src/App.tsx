@@ -1,93 +1,131 @@
-import { useState } from 'react'
-import { Activity, ArrowDown, ArrowRight, ArrowUpRight, BookOpen, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, Clock3, Command, Copy, Download, ExternalLink, FileSearch, FileText, FlaskConical, Focus, Github, Layers3, Library, LoaderCircle, Menu, MessageSquareText, MoreHorizontal, PanelLeftClose, Plus, Search, Settings2, ShieldCheck, Sparkles, X } from 'lucide-react'
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { createClient, Session } from '@supabase/supabase-js'
 import ReactMarkdown from 'react-markdown'
+import { ArrowDown, ArrowRight, BookOpen, Check, ChevronDown, ChevronLeft, CircleHelp, Clock3, FileSearch, Library, LoaderCircle, LogIn, LogOut, Menu, MessageSquarePlus, MoreHorizontal, Plus, Search, ShieldCheck, Sparkles, X } from 'lucide-react'
 
-type Source = { n:number; title:string; authors:string; journal:string; year:string; doi:string; url:string; tag:string }
-const sources: Source[] = [
-  {n:1,title:'Sleep quality and academic performance in university students: a systematic review',authors:'Hershner, S. & Chervin, R.',journal:'Nature and Science of Sleep',year:'2014',doi:'10.2147/NSS.S62907',url:'https://doi.org/10.2147/NSS.S62907',tag:'Systematic review'},
-  {n:2,title:'Sleep and academic performance in university students: a systematic review',authors:'Curcio, G., Ferrara, M. & De Gennaro, L.',journal:'Sleep Medicine Reviews',year:'2006',doi:'10.1016/j.smrv.2005.11.001',url:'https://doi.org/10.1016/j.smrv.2005.11.001',tag:'Review'},
-  {n:3,title:'Sleep quality, sleep patterns and academic performance among medical students',authors:'Azad, M.C. et al.',journal:'Journal of Clinical Sleep Medicine',year:'2015',doi:'10.5664/jcsm.5386',url:'https://doi.org/10.5664/jcsm.5386',tag:'Observational study'},
-  {n:4,title:'The effects of sleep deprivation on cognitive performance',authors:'Alhola, P. & Polo-Kantola, P.',journal:'Neuropsychiatric Disease and Treatment',year:'2007',doi:'10.2147/NDT.S121602',url:'https://doi.org/10.2147/NDT.S121602',tag:'Review'},
+type Source = { id:number; title:string; authors?:string; venue?:string; year?:number|string; doi?:string; url?:string; pdf?:string; abstract?:string }
+type Report = { question:string; review:string; angles:string[]; sources:Source[]; generated_at:number; critic?:Record<string, unknown> }
+type Message = { id:string; role:'user'|'assistant'; text?:string; report?:Report; status?:string; progress?:number; trace?:Array<{step:string;detail:string}> }
+type Conversation = { id:string; title:string; updatedAt:number; messages:Message[] }
+const examples = [
+  'How does remote work affect employee productivity and well-being?',
+  'What are effective interventions for reducing food waste in cities?',
+  'How does social media use influence adolescent sleep quality?',
+  'Which teaching approaches improve early reading outcomes?',
 ]
-const sampleQuestion = 'How does sleep quality affect academic performance in university students?'
-const steps = [
-  {title:'Question planning',detail:'Question decomposed into 4 research angles',icon:Focus},
-  {title:'Academic search',detail:'Semantic Scholar · 26 papers screened',icon:Search},
-  {title:'Source analysis',detail:'18 relevant passages added to memory',icon:Layers3},
-  {title:'Synthesis & critique',detail:'4 sections drafted · 1 claim flagged',icon:ShieldCheck},
-]
+const apiBase=import.meta.env.VITE_API_URL || (import.meta.env.DEV?'http://localhost:8000':'')
+const authUrl=import.meta.env.VITE_SUPABASE_URL
+const authKey=import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabase=authUrl&&authKey?createClient(authUrl,authKey):null
+type AuthClient=NonNullable<typeof supabase>
+const AUTH_REQUIRED=import.meta.env.VITE_REQUIRE_AUTH==='true'
+const STORAGE_KEY='litera-conversations-v2'
 
-export default function App() {
-  const [question,setQuestion]=useState('')
-  const [report,setReport]=useState(false)
-  const [tab,setTab]=useState<'review'|'sources'|'trace'>('review')
-  const [expanded,setExpanded]=useState(true)
-  const [menu,setMenu]=useState(false)
-  const [copied,setCopied]=useState(false)
+function restoreConversations(owner:string):Conversation[]{try{return JSON.parse(localStorage.getItem(`${STORAGE_KEY}:${owner}`)||'[]')}catch{return []}}
+
+export default function App(){
+  const [session,setSession]=useState<Session|null>(null)
+  const [authReady,setAuthReady]=useState(!supabase)
+  const [conversations,setConversations]=useState<Conversation[]>([])
+  const [activeId,setActiveId]=useState<string|null>(null)
+  const [draft,setDraft]=useState('')
   const [busy,setBusy]=useState(false)
-  const [jobProgress,setJobProgress]=useState(0)
-  const [jobStage,setJobStage]=useState('Preparing research graph')
+  const [authOpen,setAuthOpen]=useState(false)
+  const [menuOpen,setMenuOpen]=useState(false)
+  const [mobileOpen,setMobileOpen]=useState(false)
   const [error,setError]=useState('')
-  const [liveReport,setLiveReport]=useState<any>(null)
-  const [liveTrace,setLiveTrace]=useState<any[]>([])
-  const apiBase=import.meta.env.VITE_API_URL || (import.meta.env.DEV?'http://localhost:8000':'')
+  const ownerKey=session?.user.id||'guest'
+  const inputRef=useRef<HTMLTextAreaElement>(null)
+  const active=conversations.find(c=>c.id===activeId)
 
-  async function runResearch(q=question){
-    if(!q.trim()) return
-    setQuestion(q);setError('');setBusy(true);setReport(false);setJobProgress(3);setJobStage('Preparing research graph')
-    try {
-      const start=await fetch(`${apiBase}/query`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})})
-      if(!start.ok) throw new Error('The research service is unavailable. Start the API and try again.')
-      const {job_id}=await start.json()
-      for(let i=0;i<180;i++){
-        await new Promise(r=>setTimeout(r,1500))
-        const response=await fetch(`${apiBase}/status/${job_id}`)
-        if(!response.ok) throw new Error('Could not read research progress.')
-        const state=await response.json()
-        setJobProgress(state.progress||5);setJobStage(state.stage||'Research in progress')
-        if(state.status==='completed'){const finalReport=await fetch(`${apiBase}/report/${job_id}`);if(!finalReport.ok)throw new Error('Research completed, but the report could not be loaded.');setLiveReport(await finalReport.json());setLiveTrace(state.trace||[]);setReport(true);setTab('review');setBusy(false);return}
-        if(state.status==='failed') throw new Error(state.error || 'Research could not be completed.')
-      }
-      throw new Error('This run is taking longer than expected. Check the API status and try again.')
-    } catch(e){setError(e instanceof Error?e.message:'Something went wrong.');setBusy(false);setJobProgress(0)}
+  useEffect(()=>{if(!supabase){setAuthReady(true);return}supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)});const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>setSession(next));return()=>subscription.unsubscribe()},[])
+  useEffect(()=>{if(!authReady)return;setConversations(restoreConversations(ownerKey));setActiveId(null)},[authReady,ownerKey])
+  useEffect(()=>{if(authReady)localStorage.setItem(`${STORAGE_KEY}:${ownerKey}`,JSON.stringify(conversations.slice(0,30)))},[authReady,ownerKey,conversations])
+  useEffect(()=>{const target=inputRef.current;if(target){target.style.height='auto';target.style.height=`${Math.min(target.scrollHeight,168)}px`}},[draft])
+
+  const createConversation=(question:string)=>{
+    const conversation:Conversation={id:crypto.randomUUID(),title:question,updatedAt:Date.now(),messages:[{id:crypto.randomUUID(),role:'user',text:question},{id:crypto.randomUUID(),role:'assistant',status:'Starting your research',progress:2}]}
+    setConversations(prev=>[conversation,...prev]);setActiveId(conversation.id);return {conversationId:conversation.id,assistantId:conversation.messages[1].id}
   }
-  async function copyReview(){await navigator.clipboard?.writeText(`${liveReport?.question||sampleQuestion}\n\n${liveReport?.review||reviewText}`);setCopied(true);setTimeout(()=>setCopied(false),1600)}
-  function showSample(){setLiveReport(null);setLiveTrace([]);setQuestion(sampleQuestion);setReport(true);setTab('review')}
-  const reviewText='Across the literature, sleep quality is consistently associated with academic performance, though the strength and direction of this relationship vary by study design and population. Students reporting poorer sleep quality tend to report lower academic outcomes, while the evidence does not establish a simple causal relationship. [1, 3]\n\nSleep supports the cognitive processes that underpin learning. Experimental and review evidence links sleep loss with reduced attention, working memory, and memory consolidation—functions students rely on during study and assessment. These effects offer a plausible pathway between disrupted sleep and academic difficulties. [2, 4]\n\nA recurring theme is that sleep quantity alone does not explain academic outcomes. Sleep timing, regularity, daytime sleepiness, and perceived quality may contribute independently. The studies differ in how they measure both sleep and performance, which limits direct comparison across samples. [1, 3]\n\nTaken together, the evidence supports an association and a credible cognitive mechanism, but longitudinal and intervention studies are needed to establish causality. Sleep health may be a useful part of student well-being programs; it should not be presented as a standalone intervention guaranteed to improve grades. [1, 2, 4]'
-  const shownSources:Source[]=liveReport?.sources?.map((s:any,i:number)=>({n:i+1,title:s.title||'Untitled paper',authors:s.authors||'Authors not listed',journal:s.venue||'Venue not listed',year:String(s.year||'n.d.'),doi:s.doi||'',url:s.url||s.pdf||'',tag:s.doi?'DOI verified':'Academic paper'}))||sources
+  const updateAssistant=(conversationId:string,assistantId:string,update:Partial<Message>)=>setConversations(prev=>prev.map(c=>c.id!==conversationId?c:{...c,updatedAt:Date.now(),messages:c.messages.map(m=>m.id===assistantId?{...m,...update}:m)}))
+  async function submitResearch(question:string){
+    const cleaned=question.trim();if(!cleaned||busy)return
+    if(AUTH_REQUIRED&&supabase&&!session){setAuthOpen(true);return}
+    if(!apiBase){setError('Research is temporarily unavailable. Please try again later.');return}
+    setDraft('');setError('');setBusy(true)
+    const {conversationId,assistantId}=createConversation(cleaned)
+    try{
+      const headers:Record<string,string>={'Content-Type':'application/json'}
+      if(session?.access_token)headers.Authorization=`Bearer ${session.access_token}`
+      const start=await fetch(`${apiBase}/query`,{method:'POST',headers,body:JSON.stringify({question:cleaned})})
+      const startBody=await start.json().catch(()=>({}))
+      if(!start.ok)throw new Error(startBody.detail||'We could not start this research. Please try again.')
+      const {job_id}=startBody
+      for(let attempt=0;attempt<240;attempt++){
+        await new Promise(resolve=>setTimeout(resolve,1500))
+        const response=await fetch(`${apiBase}/status/${job_id}`,{headers:session?.access_token?{Authorization:`Bearer ${session.access_token}`}:{}})
+        const state=await response.json().catch(()=>({}))
+        if(!response.ok)throw new Error(state.detail||'We lost connection to this research. Please try again.')
+        updateAssistant(conversationId,assistantId,{status:state.stage||'Reviewing academic evidence',progress:state.progress||5,trace:state.trace||[]})
+        if(state.status==='failed')throw new Error(state.error||'Research could not be completed. Try a more specific question.')
+        if(state.status==='completed'){
+          const finalResponse=await fetch(`${apiBase}/report/${job_id}`,{headers:session?.access_token?{Authorization:`Bearer ${session.access_token}`}:{}})
+          const report=await finalResponse.json().catch(()=>({}))
+          if(!finalResponse.ok)throw new Error(report.detail||'The review was completed but could not be loaded.')
+          updateAssistant(conversationId,assistantId,{status:undefined,progress:100,report,trace:state.trace||[]})
+          return
+        }
+      }
+      throw new Error('This research is taking longer than expected. Please try again.')
+    }catch(err){updateAssistant(conversationId,assistantId,{status:undefined,text:err instanceof Error?err.message:'Something went wrong.'})}
+    finally{setBusy(false)}
+  }
+  function handleSubmit(e:FormEvent){e.preventDefault();void submitResearch(draft)}
+  function handleKeyDown(e:KeyboardEvent<HTMLTextAreaElement>){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void submitResearch(draft)}}
+  function newResearch(){if(busy)return;setActiveId(null);setError('');setDraft('');setMobileOpen(false);inputRef.current?.focus()}
+  function selectConversation(id:string){if(busy)return;setActiveId(id);setMobileOpen(false);setError('')}
+  async function signOut(){if(supabase)await supabase.auth.signOut();setSession(null);setMenuOpen(false)}
+  function removeConversation(id:string){setConversations(prev=>prev.filter(c=>c.id!==id));if(activeId===id)setActiveId(null)}
+
+  if(!authReady)return <div className="boot-screen"><div className="brand-mark"><BookOpen size={19}/></div><LoaderCircle className="spin" size={18}/></div>
+  if(AUTH_REQUIRED&&supabase&&!session)return <AuthScreen supabase={supabase} onSuccess={()=>setAuthOpen(false)}/>
 
   return <div className="app-shell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-mark"><BookOpen size={18}/></div><span>litera<span className="brand-period">.</span></span><button className="icon-btn side-collapse" aria-label="Collapse sidebar"><PanelLeftClose size={17}/></button></div>
-      <button className="new-review" onClick={()=>{setReport(false);setQuestion('');setError('')}}><Plus size={16}/> <span>New literature review</span><span className="shortcut">⌘ K</span></button>
-      <div className="side-label">WORKSPACE</div>
-      <button className="nav-item active"><Activity size={16}/><span>Research studio</span></button>
-      <button className="nav-item"><Library size={16}/><span>My library</span><span className="nav-count">0</span></button>
-      <div className="history-heading"><span className="side-label">RECENT REVIEWS</span><button className="icon-btn" aria-label="More"><MoreHorizontal size={17}/></button></div>
-      <div className="history-empty"><FileText size={17}/><span>Your reviews will appear here</span></div>
-      <div className="sidebar-bottom"><div className="plan-card"><div className="plan-icon"><Sparkles size={15}/></div><div><strong>Open research, for all.</strong><p>Free and open source, always.</p></div><ArrowUpRight size={14}/></div><button className="profile"><div className="avatar">R</div><div className="profile-copy"><strong>Researcher</strong><span>Personal workspace</span></div><MoreHorizontal size={17}/></button></div>
+    {mobileOpen&&<button className="mobile-backdrop" onClick={()=>setMobileOpen(false)} aria-label="Close navigation"/>}
+    <aside className={`sidebar ${mobileOpen?'sidebar-open':''}`}>
+      <div className="sidebar-top"><a className="brand" href="#" onClick={e=>{e.preventDefault();newResearch()}}><span className="brand-mark"><BookOpen size={18}/></span><span>litera<span className="brand-period">.</span></span></a><button className="icon-btn mobile-close" onClick={()=>setMobileOpen(false)} aria-label="Close sidebar"><X size={18}/></button></div>
+      <button className="new-chat" onClick={newResearch}><MessageSquarePlus size={17}/><span>New research</span><span className="new-chat-shortcut">⌘ K</span></button>
+      <div className="sidebar-label">YOUR RESEARCH</div>
+      <nav className="history-list" aria-label="Research history">{conversations.length?conversations.slice(0,30).map(c=><div className={`history-row ${activeId===c.id?'history-active':''}`} key={c.id}><button className="history-link" onClick={()=>selectConversation(c.id)}><span className="history-title">{c.title}</span></button><button className="history-more" aria-label={`Remove ${c.title}`} onClick={()=>removeConversation(c.id)}><X size={14}/></button></div>):<div className="history-empty"><Library size={17}/><span>Your past searches will appear here</span></div>}</nav>
+      <div className="sidebar-bottom"><div className="privacy-note"><ShieldCheck size={15}/><span>Your searches are saved in this browser.</span></div><button className="account-row" onClick={()=>AUTH_REQUIRED&&!session?setAuthOpen(true):setMenuOpen(v=>!v)}><span className="avatar">{session?.user.email?.[0]?.toUpperCase()||'R'}</span><span className="account-copy"><strong>{session?.user.email||'Researcher'}</strong><small>{session?'Signed in':'Personal workspace'}</small></span><MoreHorizontal size={17}/></button>{menuOpen&&<div className="account-menu">{session?<button onClick={signOut}><LogOut size={15}/> Sign out</button>:<button onClick={()=>{setAuthOpen(true);setMenuOpen(false)}}><LogIn size={15}/> Sign in</button>}</div>}</div>
     </aside>
-
     <main className="main-area">
-      <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14}/><strong>{report?'Literature review':'Research studio'}</strong></div><div className="top-actions"><span className="status-pill"><span className="green-dot"/> Transparent by design</span><button className="icon-btn" aria-label="Help"><CircleHelp size={17}/></button><button className="icon-btn" aria-label="Settings"><Settings2 size={17}/></button></div></header>
-      {!report ? <section className="welcome-wrap">
-        <div className="welcome"><div className="eyebrow"><span className="eyebrow-line"/> THE RESEARCH WORKSPACE</div><h1>Good research starts<br/>with a <em>better question.</em></h1><p className="welcome-sub">Turn a research question into a structured, citation-backed literature review. Every source, step, and decision stays in view.</p>
-          <div className="composer"><div className="composer-top"><span className="composer-label"><Sparkles size={14}/> Your research question</span><span className="composer-hint">Be specific for better results</span></div><textarea value={question} onChange={e=>setQuestion(e.target.value)} placeholder="e.g. How does sleep quality affect academic performance in university students?" rows={3} onKeyDown={e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter')runResearch()}}/><div className="composer-bottom"><div className="source-pills"><span><span className="source-dot scholar"/> Semantic Scholar</span><span><span className="source-dot web"/> Chroma RAG</span></div><button className="run-btn" disabled={busy||!question.trim()||!apiBase} onClick={()=>runResearch()}>{busy?<><LoaderCircle size={15} className="spin"/> Researching</>:!apiBase?<>Live API needed <ArrowRight size={15}/></>:<>Start research <ArrowRight size={15}/></>}</button></div></div>
-          {!apiBase&&<div className="api-mode-note"><ShieldCheck size={14}/> Sample mode is ready. Add <code>VITE_API_URL</code> in GitHub repository variables to enable live runs.</div>}
-          {busy&&<div className="live-progress"><div className="progress-copy"><span className="progress-icon"><LoaderCircle size={15} className="spin"/></span><div><strong>{jobStage}</strong><span>Searching and synthesizing academic evidence</span></div><b>{jobProgress}%</b></div><div className="progress-track"><span style={{width:`${jobProgress}%`}}/></div></div>}
-          {error&&<div className="error-note"><CircleHelp size={15}/>{error}</div>}
-          <div className="sample-line"><span>EXPLORE A SAMPLE</span><button onClick={showSample}>How does sleep quality affect academic performance? <ArrowUpRight size={13}/></button></div>
-        </div>
-        <div className="workflow"><div className="workflow-head"><div><span className="workflow-overline">A CLEAR PATH FROM QUESTION TO REVIEW</span><h2>Research, in the open.</h2></div><span className="workflow-badge"><span className="pulse-dot"/> 4-stage workflow</span></div><div className="workflow-grid">{steps.map((s,i)=><div className="workflow-step" key={s.title}><div className="step-top"><div className="step-icon"><s.icon size={17}/></div><span className="step-number">0{i+1}</span></div><strong>{s.title}</strong><p>{s.detail}</p>{i<steps.length-1&&<div className="step-connector"/>}</div>)}</div><div className="trust-strip"><div><ShieldCheck size={16}/><span>Grounded in real sources</span></div><i/><div><Activity size={16}/><span>Inspectable agent trace</span></div><i/><div><FlaskConical size={16}/><span>Built for first-pass research</span></div></div></div>
-      </section> : <section className="report-page">
-        <div className="report-top"><div><div className="eyebrow"><span className="eyebrow-line"/> RESEARCH COMPLETE <span className="complete-badge"><Check size={12}/> {liveReport?'Critic checked':'Example review'}</span></div><h1>{liveReport?.question||sampleQuestion}</h1><div className="report-meta"><span><Clock3 size={14}/> {liveReport?'Generated just now':'Example report'}</span><i/><span><FileSearch size={14}/> {liveReport?.sources?.length||sources.length} sources</span><i/><span><Layers3 size={14}/> {liveReport?.angles?.length||4} research angles</span></div></div><button className="quiet-btn" onClick={()=>{setReport(false);setQuestion('');setLiveReport(null)}}><Plus size={15}/> New review</button></div>
-        <div className="report-layout"><div className="report-content"><div className="report-tabs"><button className={tab==='review'?'selected':''} onClick={()=>setTab('review')}><FileText size={15}/> Literature review</button><button className={tab==='sources'?'selected':''} onClick={()=>setTab('sources')}><BookOpen size={15}/> Sources <span className="tab-count">{shownSources.length}</span></button><button className={tab==='trace'?'selected':''} onClick={()=>setTab('trace')}><Activity size={15}/> Run trace</button><div className="tab-spacer"/><button className="icon-btn" title="Copy review" onClick={copyReview}>{copied?<Check size={15}/>:<Copy size={15}/>}</button><button className="icon-btn" title="Download review" onClick={()=>{const body=liveReport?.review||reviewText;const questionText=liveReport?.question||sampleQuestion;const refs=shownSources.map(s=>`[${s.n}] ${s.authors} (${s.year}). ${s.title}. ${s.journal}. ${s.url}`).join('\n');const blob=new Blob([`${questionText}\n\n${body}\n\nSources:\n${refs}`],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='litera-review.txt';a.click();URL.revokeObjectURL(a.href)}}><Download size={15}/></button></div>
-          {tab==='review'&&<article className="review-paper"><div className="paper-kicker">LITERATURE REVIEW <span>·</span> {liveReport?'AI-GENERATED SYNTHESIS':'EXAMPLE REVIEW'}</div><h2>{liveReport?'Evidence synthesis':'Sleep quality & academic performance'}</h2><p className="paper-intro">{liveReport?'A source-grounded synthesis generated from retrieved academic literature.':'A synthesis of current evidence on how sleep health relates to learning outcomes in university students.'}</p>{!liveReport&&<div className="key-finding"><div className="finding-icon"><Sparkles size={15}/></div><div><strong>Key finding</strong><p>Evidence points to a consistent association between sleep quality and academic performance, with cognitive function as a plausible pathway. Causality remains unestablished.</p></div></div>}{liveReport?<div className="generated-review"><ReactMarkdown components={{a:({href,children,...props})=>{const match=href?.match(/^litera-source:(\d+)$/);const source=match?shownSources[Number(match[1])-1]:null;return <a href={source?.url||href} target="_blank" rel="noreferrer" {...props}>{children}</a>}}}>{liveReport.review.replace(/\[(\d+)\]/g,'[$1](litera-source:$1)')}</ReactMarkdown></div>:<><h3>Sleep and academic outcomes</h3><p>Across the literature, sleep quality is consistently associated with academic performance, though the strength and direction of this relationship vary by study design and population. Students reporting poorer sleep quality tend to report lower academic outcomes, while the evidence does not establish a simple causal relationship. <a href={sources[0].url} target="_blank" rel="noreferrer">[1]</a>, <a href={sources[2].url} target="_blank" rel="noreferrer">[3]</a></p><h3>Cognitive pathways</h3><p>Sleep supports the cognitive processes that underpin learning. Experimental and review evidence links sleep loss with reduced attention, working memory, and memory consolidation—functions students rely on during study and assessment. These effects offer a plausible pathway between disrupted sleep and academic difficulties. <a href={sources[1].url} target="_blank" rel="noreferrer">[2]</a>, <a href={sources[3].url} target="_blank" rel="noreferrer">[4]</a></p><h3>Beyond sleep duration</h3><p>A recurring theme is that sleep quantity alone does not explain academic outcomes. Sleep timing, regularity, daytime sleepiness, and perceived quality may contribute independently. The studies differ in how they measure both sleep and performance, which limits direct comparison across samples. <a href={sources[0].url} target="_blank" rel="noreferrer">[1]</a>, <a href={sources[2].url} target="_blank" rel="noreferrer">[3]</a></p><h3>Limitations &amp; implications</h3><p>Taken together, the evidence supports an association and a credible cognitive mechanism, but longitudinal and intervention studies are needed to establish causality. Sleep health may be a useful part of student well-being programs; it should not be presented as a standalone intervention guaranteed to improve grades. <a href={sources[0].url} target="_blank" rel="noreferrer">[1]</a>, <a href={sources[1].url} target="_blank" rel="noreferrer">[2]</a>, <a href={sources[3].url} target="_blank" rel="noreferrer">[4]</a></p></>}<div className="paper-note"><ShieldCheck size={15}/><span><strong>Evidence note</strong> AI-generated synthesis is a first-pass aid. Verify the source papers before citing.</span></div><div className="paper-footer">Generated by Litera's multi-agent research workflow <span>·</span> Verify sources before citing in submitted work.</div></article>}
-          {tab==='sources'&&<div className="source-list"><div className="section-title"><div><h2>Sources reviewed</h2><p>Academic sources retrieved and used in this synthesis.</p></div><span className="source-count">{shownSources.length} SOURCES</span></div>{shownSources.map(s=><div className="source-card" key={s.n}><div className="source-index">{String(s.n).padStart(2,'0')}</div><div className="source-info"><span className="source-tag">{s.tag}</span><h3>{s.title}</h3><p>{s.authors} · {s.journal} · {s.year}</p>{s.url&&<a href={s.url} target="_blank" rel="noreferrer">{s.doi?`DOI: ${s.doi}`:'Open paper'} <ExternalLink size={12}/></a>}</div>{s.url&&<button className="icon-btn" aria-label="Open source" onClick={()=>window.open(s.url,'_blank')}><ArrowUpRight size={15}/></button>}</div>)}</div>}
-          {tab==='trace'&&<div className="trace-pane"><div className="section-title"><div><h2>Run trace</h2><p>See how the research moved from question to synthesis.</p></div><span className="complete-badge"><Check size={12}/> Complete</span></div><div className="trace-list">{(liveTrace.length?liveTrace.map((t:any)=>({title:t.step,detail:t.detail})):steps.map(s=>({title:s.title,detail:s.detail}))).map((s:any,i:number)=><div className="trace-row" key={`${s.title}-${i}`}><div className="trace-check"><Check size={13}/></div><div className="trace-body"><strong>{s.title}</strong><p>{s.detail}</p>{!liveTrace.length&&i===1&&<div className="trace-extra">Semantic Scholar · 26 results · 18 retained<br/>Sources filtered for relevance and metadata quality.</div>}</div><span className="trace-time">{liveTrace.length?'Done':i===0?'2s':i===1?'14s':i===2?'5s':'8s'}</span></div>)}</div><div className="trace-disclaimer"><ShieldCheck size={15}/><span>Each step is recorded so you can inspect the sources and reasoning behind this review.</span></div></div>}
-        </div><aside className="report-aside"><div className="aside-card summary-card"><div className="aside-heading"><span>REVIEW SUMMARY</span><button className="icon-btn"><MoreHorizontal size={16}/></button></div><div className="summary-stat"><div className="summary-icon"><BookOpen size={15}/></div><div><strong>{sources.length}</strong><span>academic sources</span></div></div><div className="summary-stat"><div className="summary-icon"><Focus size={15}/></div><div><strong>4</strong><span>research angles</span></div></div><div className="summary-stat"><div className="summary-icon"><Clock3 size={15}/></div><div><strong>~30 sec</strong><span>time to synthesize</span></div></div><div className="aside-divider"/><div className="confidence-label"><span>Evidence coverage</span><strong>Good</strong></div><div className="coverage-bar"><span/></div><p className="coverage-note">Sources span reviews and observational research.</p></div><div className="aside-card angles-card"><div className="aside-heading"><span>RESEARCH ANGLES</span><span className="angle-total">04</span></div>{['Sleep quality & grades','Cognitive mechanisms','Sleep patterns','Evidence limitations'].map((a,i)=><div className="angle-row" key={a}><span className="angle-check"><Check size={11}/></span><span>{a}</span><span className="angle-sources">{[3,2,2,4][i]} src</span></div>)}</div><div className="integrity-card"><div className="integrity-mark"><ShieldCheck size={16}/></div><div><strong>Read critically</strong><p>AI-generated synthesis is a starting point. Verify original papers before citing.</p></div><ChevronDown size={14}/></div></aside></div>
-      </section>}
-      <footer className="app-footer"><span>Litera <span className="brand-period">.</span> <i/> Built for curious minds</span><span>Transparent research, one question at a time.</span></footer>
+      <header className="topbar"><div className="topbar-left"><button className="icon-btn mobile-menu" onClick={()=>setMobileOpen(true)} aria-label="Open navigation"><Menu size={19}/></button><span className="topbar-label">Research assistant</span></div><div className="topbar-actions"><span className="source-status"><span className="status-dot"/> Academic sources</span>{session?<button className="profile-button" onClick={()=>setMenuOpen(v=>!v)}><span className="avatar small">{session.user.email?.[0]?.toUpperCase()||'R'}</span><span>{session.user.email}</span><ChevronDown size={14}/></button>:AUTH_REQUIRED&&supabase?<button className="sign-in-button" onClick={()=>setAuthOpen(true)}><LogIn size={14}/> Sign in</button>:null}<a className="github-link" href="https://github.com/xRONITx/litera-research-assistant" target="_blank" rel="noreferrer">GitHub</a></div></header>
+      <section className={`conversation ${active?'has-messages':''}`}>
+        {!active?<div className="welcome-state"><div className="welcome-icon"><BookOpen size={22}/></div><h1>What are you researching?</h1><p>Ask a question. Get a literature review grounded in academic sources.</p><div className="suggestion-grid">{examples.map((item,i)=><button className="suggestion" key={item} onClick={()=>setDraft(item)}><span className="suggestion-index">0{i+1}</span><span>{item}</span><ArrowRight size={15}/></button>)}</div></div>:<div className="message-list" key={active.id}>{active.messages.map(message=><div className={`message message-${message.role}`} key={message.id}>{message.role==='user'?<><div className="user-avatar">{session?.user.email?.[0]?.toUpperCase()||'R'}</div><div className="user-message-text">{message.text}</div></>:<><div className="assistant-avatar"><BookOpen size={15}/></div><div className="assistant-content">{message.status?<div className="research-progress"><div className="progress-label"><LoaderCircle size={15} className="spin"/><span>{message.status}</span><b>{message.progress||0}%</b></div><div className="progress-bar"><span style={{width:`${message.progress||1}%`}}/></div><div className="progress-caption">Finding relevant papers and preparing your review</div></div>:message.report?<ReviewResult report={message.report} trace={message.trace||[]}/>:<div className="message-error"><CircleHelp size={16}/>{message.text}</div>}</div></>}</div>)}</div>}
+      </section>
+      <div className={`composer-dock ${active?'dock-followup':''}`}><form className="composer" onSubmit={handleSubmit}><textarea ref={inputRef} value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={handleKeyDown} placeholder="Ask any research question…" rows={1} aria-label="Research question" disabled={busy}/><div className="composer-bottom"><div className="composer-hint"><Search size={14}/><span>Searches academic papers and synthesizes the evidence</span></div><div className="composer-actions"><span className="enter-hint">↵ to send</span><button className="send-button" type="submit" disabled={!draft.trim()||busy} aria-label="Start research">{busy?<LoaderCircle size={17} className="spin"/>:<ArrowRight size={17}/>}</button></div></div></form><div className="composer-footnote">Litera can make mistakes. Check original papers before citing.</div>{error&&<div className="global-error">{error}</div>}</div>
     </main>
+    {authOpen&&<AuthModal supabase={supabase} onClose={()=>setAuthOpen(false)} onSuccess={()=>setAuthOpen(false)}/>}
   </div>
+}
+
+function ReviewResult({report,trace}:{report:Report;trace:Array<{step:string;detail:string}>}){
+  const [sourcesOpen,setSourcesOpen]=useState(false)
+  const sourceList=report.sources||[]
+  const review=(report.review||'').replace(/\[(\d+)\]/g,'[$1](litera-source:$1)')
+  return <div className="review-result"><div className="result-eyebrow"><Sparkles size={14}/> LITERATURE REVIEW <span>·</span> {sourceList.length} SOURCES</div><ReactMarkdown components={{a:({href,children,...props})=>{const m=href?.match(/^litera-source:(\d+)$/);const source=m?sourceList[Number(m[1])-1]:undefined;return <a href={source?.url||href} target="_blank" rel="noreferrer" {...props}>{children}</a>}}}>{review}</ReactMarkdown><div className="evidence-callout"><ShieldCheck size={16}/><span>This is a first-pass synthesis. Verify the cited papers before using the findings in your work.</span></div><button className="sources-toggle" onClick={()=>setSourcesOpen(v=>!v)}><BookOpen size={15}/><strong>Sources</strong><span>{sourceList.length}</span>{sourcesOpen?<ChevronDown size={15}/>:<ArrowRight size={14}/>}</button>{sourcesOpen&&<div className="source-list">{sourceList.map((source,i)=><a className="source-item" key={`${source.id}-${i}`} href={source.url||source.pdf||'#'} target="_blank" rel="noreferrer"><span className="source-num">{i+1}</span><span className="source-detail"><strong>{source.title}</strong><small>{source.authors||'Authors not listed'}{source.venue?` · ${source.venue}`:''}{source.year?` · ${source.year}`:''}</small>{source.doi&&<small className="source-doi">DOI: {source.doi}</small>}</span><ArrowDown className="source-open" size={14}/></a>)}</div>}<div className="result-note"><Clock3 size={13}/> Completed {report.generated_at?new Date(report.generated_at*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'just now'} <span>·</span> {trace.length} research steps</div></div>
+}
+
+function AuthScreen({supabase,onSuccess}:{supabase:AuthClient;onSuccess:()=>void}){
+  const [mode,setMode]=useState<'signin'|'signup'>('signin')
+  const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [pending,setPending]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('')
+  async function submit(e:FormEvent){e.preventDefault();if(!supabase)return;setPending(true);setError('');setNotice('');try{if(mode==='signup'){const {data,error:authError}=await supabase.auth.signUp({email,password});if(authError)throw authError;if(!data.session)setNotice('Check your email to confirm your account, then sign in.');else onSuccess()}else{const {error:authError}=await supabase.auth.signInWithPassword({email,password});if(authError)throw authError;onSuccess()}}catch(err){setError(err instanceof Error?err.message:'Unable to sign in. Try again.')}finally{setPending(false)}}
+  return <div className="auth-page"><div className="auth-brand"><span className="brand-mark"><BookOpen size={18}/></span>litera<span className="brand-period">.</span></div><div className="auth-card"><div className="auth-symbol"><BookOpen size={20}/></div><h1>{mode==='signin'?'Welcome back':'Create your account'}</h1><p>Sign in to start a literature review.</p><form onSubmit={submit}><label>Email address<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete="email"/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required minLength={8} autoComplete={mode==='signin'?'current-password':'new-password'}/></label>{error&&<div className="auth-error">{error}</div>}{notice&&<div className="auth-notice">{notice}</div>}<button className="auth-submit" disabled={pending}>{pending?<LoaderCircle className="spin" size={16}/>:mode==='signin'?'Sign in':'Create account'}{!pending&&<ArrowRight size={15}/>}</button></form><div className="auth-switch">{mode==='signin'?"New to Litera?":"Already have an account?"}<button onClick={()=>{setMode(mode==='signin'?'signup':'signin');setError('');setNotice('')}}>{mode==='signin'?'Create an account':'Sign in'}</button></div></div><p className="auth-footer">Your research, organized and ready to revisit.</p></div>
+}
+
+function AuthModal({supabase,onClose,onSuccess}:{supabase:AuthClient|null;onClose:()=>void;onSuccess:()=>void}){
+  const [mode,setMode]=useState<'signin'|'signup'>('signin');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [pending,setPending]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('')
+  async function submit(e:FormEvent){e.preventDefault();if(!supabase)return;setPending(true);setError('');setNotice('');try{if(mode==='signup'){const {data,error:authError}=await supabase.auth.signUp({email,password});if(authError)throw authError;if(!data.session)setNotice('Check your email to confirm your account.');else onSuccess()}else{const {error:authError}=await supabase.auth.signInWithPassword({email,password});if(authError)throw authError;onSuccess()}}catch(err){setError(err instanceof Error?err.message:'Unable to sign in. Try again.')}finally{setPending(false)}}
+  return <div className="modal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className="modal-close" onClick={onClose} aria-label="Close"><X size={18}/></button><div className="auth-symbol"><BookOpen size={19}/></div><h2 id="auth-title">{mode==='signin'?'Sign in to Litera':'Create your account'}</h2><p>Save your research and return to it anytime.</p><form onSubmit={submit}><label>Email address<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete="email"/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required minLength={8} autoComplete={mode==='signin'?'current-password':'new-password'}/></label>{error&&<div className="auth-error">{error}</div>}{notice&&<div className="auth-notice">{notice}</div>}<button className="auth-submit" disabled={pending}>{pending?<LoaderCircle className="spin" size={16}/>:mode==='signin'?'Sign in':'Create account'}{!pending&&<ArrowRight size={15}/>}</button></form><div className="auth-switch">{mode==='signin'?"New to Litera?":"Already have an account?"}<button onClick={()=>{setMode(mode==='signin'?'signup':'signin');setError('');setNotice('')}}>{mode==='signin'?'Create an account':'Sign in'}</button></div></section></div>
 }
