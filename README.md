@@ -3,6 +3,7 @@
 **An inspectable multi-agent research assistant that turns a research question into a source-grounded first-pass literature review.** Litera decomposes a question, searches real academic papers, retrieves relevant evidence, drafts a synthesis with inline citations, and gives a critic one bounded revision. The interface exposes the sources and run trace.
 
 **Repository:** [github.com/xRONITx/litera-research-assistant](https://github.com/xRONITx/litera-research-assistant)
+**Live demo:** [xronitx.github.io/litera-research-assistant](https://xronitx.github.io/litera-research-assistant/)
 
 > This capstone project is a research aid, not a substitute for reading primary studies. The included sleep example is a clearly labeled demonstration. Live research requires your own free-tier model key. Evaluation is planned; no RAGAS scores or measured results are claimed yet.
 

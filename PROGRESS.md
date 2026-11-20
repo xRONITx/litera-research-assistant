@@ -10,7 +10,7 @@ Updated: 2026-11-20
 - Semantic Scholar search and ChromaDB local retrieval.
 - Gemini primary, Groq fallback, optional Ollama local provider.
 - Environment templates and Vercel, Render, and Docker deployment configuration.
-- Public GitHub repository and GitHub Pages build/deploy workflow.
+- Public GitHub repository and deployed GitHub Pages demo.
 - Architecture, setup, limitations, and evaluation status documented.
 
 ## Remaining
