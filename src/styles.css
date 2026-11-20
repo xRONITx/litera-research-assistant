@@ -139,6 +139,10 @@ body,.app-shell,.main-area,.conversation{font-family:var(--ui-font);background:v
 .composer-bottom{justify-content:flex-end}
 :root[data-theme="dark"] .repository-link{color:#d0d0d0}
 :root[data-theme="dark"] .repository-link:hover{color:var(--user-accent)}
+.composer{padding:8px 11px!important}
+.composer-input-row{display:flex;align-items:flex-end;gap:10px}
+.composer-input-row textarea{flex:1;min-width:0;width:100%;min-height:42px!important;padding:9px 5px 8px!important;line-height:1.5}
+.composer-input-row .send-button{flex:0 0 34px;margin:0 0 3px}
 .topbar{height:60px;padding:0 32px;backdrop-filter:blur(12px)}
 .topbar-actions{gap:12px}
 .appearance-trigger{width:38px;height:38px;justify-content:center;padding:0;border-radius:11px;color:var(--user-accent,#54745d);transition:transform .16s ease,background .16s ease,border-color .16s ease,box-shadow .16s ease}
