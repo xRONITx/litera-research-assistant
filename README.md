@@ -89,24 +89,25 @@ When sign-in is enabled, send `Authorization: Bearer <supabase-access-token>` wi
 
 ### 1. Create the free-tier service accounts
 
-- Create a Supabase project and enable email/password authentication.
-- Create a Gemini API key or a Groq API key. Keep the key private; do not put it in a `VITE_` variable or commit it.
-- Import the repository into Render and create the API service from `render.yaml`.
+- Create a project in [Supabase](https://supabase.com/dashboard/projects) and keep the project URL and publishable/anon key available.
+- Create a [Gemini API key in Google AI Studio](https://aistudio.google.com/app/apikey). Keep this key private; never put it in a `VITE_` variable or commit it.
+- In Supabase **Authentication → URL Configuration**, set the Site URL to `https://xronitx.github.io/litera-research-assistant/` and add that same URL to the redirect allow list.
+- In [Render](https://dashboard.render.com/), choose **New → Blueprint**, connect this repository, and deploy the `render.yaml` blueprint. Enter the Gemini key and the Supabase project URL and publishable/anon key when prompted.
 
 ### 2. Configure the API on Render
 
-Set these service environment variables in Render:
+The blueprint sets the other API options. Confirm these values under the Render service's **Environment** page:
 
 | Variable | Value |
 |---|---|
-| `GEMINI_API_KEY` or `GROQ_API_KEY` | Your provider's server-side API key |
+| `GEMINI_API_KEY` | Your provider's server-side API key |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_ANON_KEY` | Supabase publishable/anon key |
 | `REQUIRE_AUTH` | `true` |
 | `DAILY_RESEARCH_LIMIT` | `3` |
 | `CORS_ORIGINS` | `https://xronitx.github.io` |
 
-The deployment tries Gemini first and Groq second when both are configured. Provider free tiers and model names can change. Each signed-in user is limited to three requests per rolling day to preserve the shared free quota.
+The default model is Gemini Flash-Lite. Free quotas can change or be exhausted, and each signed-in user is limited to three requests per rolling day to preserve the shared quota.
 
 ### 3. Configure the GitHub Pages frontend
 
@@ -121,7 +122,7 @@ The [Pages workflow](.github/workflows/pages.yml) builds and publishes the websi
 
 The Supabase anon key is intended for browser use; enable Supabase email confirmation and configure allowed redirect URLs to include `https://xronitx.github.io/litera-research-assistant/`. Model API keys belong only in Render's protected environment settings.
 
-After setting the variables, rerun **Deploy site to GitHub Pages** from the repository's Actions tab. The frontend is static; it cannot run research until `VITE_API_URL` points to a deployed API with valid provider credentials.
+After setting the variables, run **Deploy site to GitHub Pages** from the repository's Actions tab using **Run workflow**. The frontend is static; it cannot run research until `VITE_API_URL` points to a deployed API with valid provider credentials.
 
 ## Important deployment limits
 
