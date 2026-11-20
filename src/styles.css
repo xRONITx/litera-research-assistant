@@ -151,3 +151,4 @@ body,.app-shell,.main-area,.conversation{font-family:var(--ui-font);background:v
 @keyframes appearance-panel-in{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:760px){.topbar{height:56px;padding:0 16px}.welcome-state h1{font-size:26px}.composer-dock{padding-top:23px}.appearance-backdrop{padding:14px}.appearance-panel{max-height:calc(100vh - 28px);padding:21px 18px 17px;border-radius:16px}.appearance-panel-heading{margin-bottom:17px}.appearance-row{min-height:64px}.appearance-row small{max-width:200px}}
 @media(prefers-reduced-motion:reduce){.appearance-backdrop,.appearance-panel{animation:none}.appearance-trigger,.suggestion,.new-chat,.composer,.send-button{transition:none}}
+.composer-dock{background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;padding-top:14px}
