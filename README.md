@@ -4,7 +4,7 @@
 
 [Live website](https://xronitx.github.io/litera-research-assistant/) · [Source code](https://github.com/xRONITx/litera-research-assistant)
 
-> **Deployment status:** GitHub Pages hosts the frontend. Live research and sign-in become available after the API, model provider, and Supabase settings in [Deployment setup](#deployment-setup) are configured. The app never includes a model API key in browser code. Free model accounts have usage limits; the shared service is capped at three reviews per signed-in user each day.
+> **Live deployment:** [Open Litera](https://xronitx.github.io/litera-research-assistant/). The API is running at [litera-api-9rml.onrender.com](https://litera-api-9rml.onrender.com/health), with Supabase email authentication and Gemini configured. Create an account in the app to begin. The app never includes the Gemini key in browser code. Free model quotas can be exhausted; the shared service is capped at three reviews per signed-in user each day.
 
 ## What it does
 
@@ -27,9 +27,9 @@ The results are a first pass for research. Always check the original papers befo
 | Research workflow | LangGraph |
 | Paper search | Semantic Scholar |
 | Retrieval | ChromaDB |
-| Language models | Gemini Flash or Groq Llama, with optional local Ollama |
+| Language models | Gemini 3.5 Flash-Lite, Groq GPT-OSS-120B fallback, optional local Ollama |
 | Sign-in | Supabase Auth |
-| Hosting | GitHub Pages (web), Render (API template) |
+| Hosting | GitHub Pages (web), Render (API) |
 
 ## Run locally
 
@@ -85,7 +85,9 @@ curl -X POST http://localhost:8000/query \
 
 When sign-in is enabled, send `Authorization: Bearer <supabase-access-token>` with the request. Job status and report routes are scoped to the authenticated user.
 
-## Deployment setup
+## Deployment setup for a new instance
+
+The production instance linked above is already configured. Follow these steps only when deploying your own copy or rotating its account configuration.
 
 ### 1. Create the free-tier service accounts
 
@@ -107,7 +109,7 @@ The blueprint sets the other API options. Confirm these values under the Render 
 | `DAILY_RESEARCH_LIMIT` | `3` |
 | `CORS_ORIGINS` | `https://xronitx.github.io` |
 
-The default model is Gemini Flash-Lite. Free quotas can change or be exhausted, and each signed-in user is limited to three requests per rolling day to preserve the shared quota.
+The default model is Gemini 3.5 Flash-Lite. Free quotas can change or be exhausted, and each signed-in user is limited to three requests per rolling day to preserve the shared quota.
 
 ### 3. Configure the GitHub Pages frontend
 
@@ -140,9 +142,9 @@ After setting the variables, run **Deploy site to GitHub Pages** from the reposi
 - [x] Academic search, vector retrieval, synthesis, and bounded review pass
 - [x] Gemini/Groq provider adapter with server-side keys
 - [x] Supabase email sign-in and per-user report access
-- [x] GitHub Pages deployment workflow and public frontend
-- [ ] Configure the Render API and provider credentials
-- [ ] Configure Supabase and connect the hosted frontend
+- [x] GitHub Pages frontend deployed with API and Supabase configuration
+- [x] Render API deployed with Gemini and Supabase configuration
+- [ ] Complete the first signed-in live research run
 - [ ] Measure RAGAS results and publish the evaluation report
 - [ ] Add durable job storage and a demo video
 

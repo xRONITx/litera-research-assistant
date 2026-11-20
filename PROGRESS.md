@@ -12,13 +12,15 @@ Updated: 2026-11-20
 - Semantic Scholar search and ChromaDB local retrieval.
 - Gemini 3.5 Flash-Lite primary, Groq fallback, optional Ollama local provider.
 - Environment templates and Vercel, Render, and Docker deployment configuration.
-- Public GitHub repository and deployed GitHub Pages demo.
+- Public GitHub repository and deployed GitHub Pages frontend.
+- Render API deployed with a Gemini key stored as a server environment secret.
+- Supabase email authentication configured with the production redirect URL.
+- GitHub Pages build variables configured; API health reports the service, auth, and model as ready.
 - Architecture, setup, limitations, and evaluation status documented.
 
 ## Remaining
 
-- Create/configure the free Supabase, Gemini/Groq, and Render services; set their project values in GitHub Pages variables and Render secrets.
-- Complete a live custom-question run after those service settings are in place.
+- Complete the first signed-in custom-question run after a user creates an account and confirms email.
 - Run the planned RAGAS evaluation and publish measured results.
 - Add durable job persistence for production use.
 - Record a demo video after deployment.
