@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import time
@@ -16,6 +17,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 load_dotenv()
+logger = logging.getLogger("litera.research")
 app = FastAPI(title="Litera Research API", version="1.0.0", description="Inspectable multi-agent literature review workflow")
 origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -146,24 +148,101 @@ async def semantic_search(query: str, limit: int = 8) -> list[dict[str, Any]]:
     headers = {"User-Agent": "LiteraResearchAssistant/1.0"}
     if os.getenv("SEMANTIC_SCHOLAR_API_KEY"):
         headers["x-api-key"] = os.environ["SEMANTIC_SCHOLAR_API_KEY"]
-    params = {"query": query, "limit": limit, "fields": "title,authors,year,abstract,venue,url,externalIds,openAccessPdf"}
+    normalized_query = re.sub(r"[\u2010-\u2015-]+", " ", query).strip()
+    params = {"query": normalized_query, "limit": limit, "fields": "title,authors,year,abstract,venue,url,externalIds,openAccessPdf"}
     async with httpx.AsyncClient(timeout=25) as client:
         response = await client.get("https://api.semanticscholar.org/graph/v1/paper/search", params=params, headers=headers)
         if response.status_code == 429:
-            await asyncio.sleep(2)
+            retry_after = response.headers.get("Retry-After", "2")
+            try:
+                delay = min(3.0, max(0.5, float(retry_after)))
+            except ValueError:
+                delay = 2.0
+            await asyncio.sleep(delay)
             response = await client.get("https://api.semanticscholar.org/graph/v1/paper/search", params=params, headers=headers)
         response.raise_for_status()
         return response.json().get("data", [])
 
+def openalex_abstract(inverted: dict[str, list[int]] | None) -> str | None:
+    if not inverted:
+        return None
+    words: list[str] = []
+    for word, positions in inverted.items():
+        for position in positions:
+            if position >= len(words):
+                words.extend([""] * (position + 1 - len(words)))
+            words[position] = word
+    abstract = " ".join(word for word in words if word)
+    return abstract or None
+
+async def openalex_search(query: str, limit: int = 8) -> list[dict[str, Any]]:
+    """Search OpenAlex when Semantic Scholar is unavailable or has no matches."""
+    params: dict[str, Any] = {
+        "search": re.sub(r"[\u2010-\u2015-]+", " ", query).strip(),
+        "per-page": min(limit, 25),
+        "select": "id,doi,title,publication_year,authorships,primary_location,open_access,abstract_inverted_index",
+    }
+    api_key = os.getenv("OPENALEX_API_KEY")
+    if api_key:
+        params["api_key"] = api_key
+    async with httpx.AsyncClient(timeout=25, headers={"User-Agent": "LiteraResearchAssistant/1.0"}) as client:
+        response = await client.get("https://api.openalex.org/works", params=params)
+        response.raise_for_status()
+        works = response.json().get("results", [])
+    papers: list[dict[str, Any]] = []
+    for work in works:
+        authors = [
+            {"name": (entry.get("author") or {}).get("display_name", "")}
+            for entry in work.get("authorships", [])[:8]
+        ]
+        location = work.get("primary_location") or {}
+        venue = (location.get("source") or {}).get("display_name")
+        open_access = work.get("open_access") or {}
+        pdf_url = (location.get("pdf_url") or open_access.get("oa_url"))
+        doi = work.get("doi")
+        papers.append({
+            "paperId": work.get("id"),
+            "title": work.get("title"),
+            "authors": authors,
+            "year": work.get("publication_year"),
+            "abstract": openalex_abstract(work.get("abstract_inverted_index")),
+            "venue": venue,
+            "url": doi or work.get("id"),
+            "externalIds": {"DOI": doi.removeprefix("https://doi.org/")} if doi else {},
+            "openAccessPdf": {"url": pdf_url} if pdf_url else None,
+        })
+    return papers
+
+async def academic_search(query: str, limit: int = 6) -> tuple[list[dict[str, Any]], str]:
+    """Use Semantic Scholar first and OpenAlex as an automatic independent fallback."""
+    try:
+        papers = await semantic_search(query, limit=limit)
+        if papers:
+            return papers, "Semantic Scholar"
+        logger.info("Semantic Scholar returned no matches; trying OpenAlex")
+    except httpx.HTTPStatusError as exc:
+        logger.warning("Semantic Scholar returned HTTP %s; trying OpenAlex", exc.response.status_code)
+    except httpx.HTTPError as exc:
+        logger.warning("Semantic Scholar request failed (%s); trying OpenAlex", exc.__class__.__name__)
+    try:
+        papers = await openalex_search(query, limit=limit)
+        if papers:
+            return papers, "OpenAlex"
+        return [], "OpenAlex"
+    except httpx.HTTPStatusError as exc:
+        logger.warning("OpenAlex returned HTTP %s", exc.response.status_code)
+        raise RuntimeError(f"Academic indexes are temporarily unavailable (Semantic Scholar and OpenAlex; HTTP {exc.response.status_code}). Please try again shortly.") from exc
+    except httpx.HTTPError as exc:
+        logger.warning("OpenAlex request failed (%s)", exc.__class__.__name__)
+        raise RuntimeError("Academic indexes are temporarily unavailable. Please try again shortly.") from exc
+
 async def researcher(state: dict[str, Any]) -> dict[str, Any]:
     papers: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for angle in state["angles"]:
-        try:
-            results = await semantic_search(angle, limit=6)
-        except httpx.HTTPError as exc:
-            state["job"]["error"] = f"Academic search failed: {exc.__class__.__name__}. Please retry shortly."
-            raise RuntimeError(state["job"]["error"]) from exc
+    providers: set[str] = set()
+    for angle in state["angles"][:3]:
+        results, provider = await academic_search(angle, limit=6)
+        providers.add(provider)
         for p in results:
             identity = p.get("paperId") or p.get("url") or p.get("title")
             if identity and identity not in seen:
@@ -174,7 +253,7 @@ async def researcher(state: dict[str, Any]) -> dict[str, Any]:
     state["papers"] = papers[:20]
     state["job"]["progress"] = 42
     state["job"]["stage"] = "Selecting relevant studies"
-    trace(state["job"], "Academic search", f"Semantic Scholar returned {len(papers)} unique papers")
+    trace(state["job"], "Academic search", f"{', '.join(sorted(providers))} returned {len(papers)} unique papers")
     return state
 
 def vector_context(papers: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
