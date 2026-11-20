@@ -356,7 +356,7 @@ async def root() -> dict[str, str]:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "healthy", "service": "litera-api", "auth_required": str(auth_required()).lower(), "auth_configured": str(bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_ANON_KEY"))).lower(), "model_configured": str(bool(os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY") or os.getenv("LLM_PROVIDER") == "ollama")).lower()}
+    return {"status": "healthy", "service": "litera-api", "revision": os.getenv("RENDER_GIT_COMMIT", "local"), "auth_required": str(auth_required()).lower(), "auth_configured": str(bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_ANON_KEY"))).lower(), "model_configured": str(bool(os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY") or os.getenv("LLM_PROVIDER") == "ollama")).lower()}
 
 @app.post("/query", status_code=202)
 async def submit_query(payload: QueryRequest, background_tasks: BackgroundTasks, user_id: str = Depends(current_user)) -> dict[str, str]:
