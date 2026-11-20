@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
 import os
@@ -38,6 +39,8 @@ class Job(TypedDict, total=False):
     user_id: str
 
 JOBS: dict[str, Job] = {}
+ACADEMIC_CACHE: dict[str, tuple[float, list[dict[str, Any]], str]] = {}
+CROSSREF_REQUEST_LOCK = asyncio.Semaphore(1)
 bearer = HTTPBearer(auto_error=False)
 
 def auth_required() -> bool:
@@ -214,41 +217,151 @@ async def openalex_search(query: str, limit: int = 8) -> list[dict[str, Any]]:
     return papers
 
 async def academic_search(query: str, limit: int = 6) -> tuple[list[dict[str, Any]], str]:
-    """Use Semantic Scholar first and OpenAlex as an automatic independent fallback."""
+    """Use two independent indexes with a short cache to reduce rate-limit pressure."""
+    cache_key = re.sub(r"\s+", " ", query).strip().casefold()
+    cached = ACADEMIC_CACHE.get(cache_key)
+    if cached and time.time() - cached[0] < 900:
+        return cached[1][:limit], cached[2]
+    if cached:
+        ACADEMIC_CACHE.pop(cache_key, None)
+    errors: list[str] = []
     try:
         papers = await semantic_search(query, limit=limit)
         if papers:
+            ACADEMIC_CACHE[cache_key] = (time.time(), papers, "Semantic Scholar")
             return papers, "Semantic Scholar"
         logger.info("Semantic Scholar returned no matches; trying OpenAlex")
     except httpx.HTTPStatusError as exc:
+        errors.append(f"Semantic Scholar HTTP {exc.response.status_code}")
         logger.warning("Semantic Scholar returned HTTP %s; trying OpenAlex", exc.response.status_code)
     except httpx.HTTPError as exc:
+        errors.append(f"Semantic Scholar {exc.__class__.__name__}")
         logger.warning("Semantic Scholar request failed (%s); trying OpenAlex", exc.__class__.__name__)
     try:
         papers = await openalex_search(query, limit=limit)
         if papers:
+            ACADEMIC_CACHE[cache_key] = (time.time(), papers, "OpenAlex")
             return papers, "OpenAlex"
         return [], "OpenAlex"
     except httpx.HTTPStatusError as exc:
+        errors.append(f"OpenAlex HTTP {exc.response.status_code}")
         logger.warning("OpenAlex returned HTTP %s", exc.response.status_code)
-        raise RuntimeError(f"Academic indexes are temporarily unavailable (Semantic Scholar and OpenAlex; HTTP {exc.response.status_code}). Please try again shortly.") from exc
     except httpx.HTTPError as exc:
+        errors.append(f"OpenAlex {exc.__class__.__name__}")
         logger.warning("OpenAlex request failed (%s)", exc.__class__.__name__)
-        raise RuntimeError("Academic indexes are temporarily unavailable. Please try again shortly.") from exc
+    raise RuntimeError("Primary academic indexes unavailable: " + "; ".join(errors))
+
+def crossref_abstract(value: str | None) -> str | None:
+    if not value:
+        return None
+    text = html.unescape(re.sub(r"<[^>]*>", " ", value))
+    return re.sub(r"\s+", " ", text).strip() or None
+
+async def crossref_search(query: str, limit: int = 12) -> list[dict[str, Any]]:
+    """Last-resort scholarly search through Crossref's public metadata API."""
+    cache_key = "crossref:" + re.sub(r"\s+", " ", query).strip().casefold()
+    cached = ACADEMIC_CACHE.get(cache_key)
+    if cached and time.time() - cached[0] < 900:
+        return cached[1][:limit]
+    params: dict[str, Any] = {
+        "query.bibliographic": query[:500],
+        "rows": min(limit, 20),
+        "select": "DOI,title,author,published,container-title,abstract,URL,type,link",
+    }
+    mailto = os.getenv("CROSSREF_MAILTO")
+    if mailto:
+        params["mailto"] = mailto
+    headers = {"User-Agent": "LiteraResearchAssistant/1.0"}
+    if mailto:
+        headers["User-Agent"] += f" (mailto:{mailto})"
+    async with CROSSREF_REQUEST_LOCK:
+        async with httpx.AsyncClient(timeout=25) as client:
+            response = await client.get("https://api.crossref.org/works", params=params, headers=headers)
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After", "2")
+                try:
+                    delay = min(5.0, max(1.0, float(retry_after)))
+                except ValueError:
+                    delay = 2.0
+                await asyncio.sleep(delay)
+                response = await client.get("https://api.crossref.org/works", params=params, headers=headers)
+            response.raise_for_status()
+            items = response.json().get("message", {}).get("items", [])
+    papers: list[dict[str, Any]] = []
+    for item in items:
+        title = next(iter(item.get("title") or []), None)
+        doi = item.get("DOI")
+        if not title or not doi:
+            continue
+        author_names = []
+        for author in item.get("author") or []:
+            name = " ".join(part for part in (author.get("given"), author.get("family")) if part)
+            if name:
+                author_names.append({"name": name})
+        date_parts = ((item.get("published") or {}).get("date-parts") or [[None]])[0]
+        year = date_parts[0] if date_parts else None
+        links = item.get("link") or []
+        pdf_url = next((link.get("URL") for link in links if "pdf" in (link.get("content-type") or "").lower()), None)
+        papers.append({
+            "paperId": doi,
+            "title": title,
+            "authors": author_names,
+            "year": year,
+            "abstract": crossref_abstract(item.get("abstract")),
+            "venue": next(iter(item.get("container-title") or []), None),
+            "url": f"https://doi.org/{doi}",
+            "externalIds": {"DOI": doi},
+            "openAccessPdf": {"url": pdf_url} if pdf_url else None,
+        })
+    if papers:
+        ACADEMIC_CACHE[cache_key] = (time.time(), papers, "Crossref")
+    return papers
 
 async def researcher(state: dict[str, Any]) -> dict[str, Any]:
     papers: list[dict[str, Any]] = []
     seen: set[str] = set()
     providers: set[str] = set()
+    search_errors: list[str] = []
     for angle in state["angles"][:3]:
-        results, provider = await academic_search(angle, limit=6)
+        try:
+            results, provider = await academic_search(angle, limit=6)
+        except RuntimeError as exc:
+            search_errors.append(str(exc))
+            # A failure from both primary indexes is a signal to use the single
+            # broad Crossref query below instead of sending more rate-limited calls.
+            break
         providers.add(provider)
         for p in results:
             identity = p.get("paperId") or p.get("url") or p.get("title")
             if identity and identity not in seen:
                 seen.add(identity)
                 papers.append(p)
+    # Crossref is deliberately queried once per review, avoiding a burst of requests
+    # from Render's shared free-tier egress IP when the primary providers are limited.
+    if search_errors or len(papers) < 6:
+        try:
+            results = await crossref_search(state["question"], limit=18)
+            for p in results:
+                identity = p.get("paperId") or p.get("url") or p.get("title")
+                if identity and identity not in seen:
+                    seen.add(identity)
+                    papers.append(p)
+            if results:
+                providers.add("Crossref")
+                now = time.time()
+                for search_term in [state["question"], *state["angles"][:3]]:
+                    key = re.sub(r"\s+", " ", search_term).strip().casefold()
+                    ACADEMIC_CACHE[key] = (now, results, "Crossref")
+        except httpx.HTTPStatusError as exc:
+            search_errors.append(f"Crossref HTTP {exc.response.status_code}")
+            logger.warning("Crossref returned HTTP %s", exc.response.status_code)
+        except httpx.HTTPError as exc:
+            search_errors.append(f"Crossref {exc.__class__.__name__}")
+            logger.warning("Crossref request failed (%s)", exc.__class__.__name__)
     if not papers:
+        if search_errors:
+            detail = "; ".join(search_errors)
+            raise RuntimeError(f"No scholarly index returned usable papers ({detail}). Please try again shortly or use the sample review.")
         raise RuntimeError("Academic search returned no papers. Try a broader research question.")
     state["papers"] = papers[:20]
     state["job"]["progress"] = 42
@@ -361,7 +474,12 @@ async def health() -> dict[str, str]:
 @app.post("/query", status_code=202)
 async def submit_query(payload: QueryRequest, background_tasks: BackgroundTasks, user_id: str = Depends(current_user)) -> dict[str, str]:
     daily_limit = max(1, int(os.getenv("DAILY_RESEARCH_LIMIT", "3")))
-    recent_runs = sum(1 for job in JOBS.values() if job.get("user_id") == user_id and job.get("started_at", 0) > time.time() - 86400)
+    recent_runs = sum(
+        1 for job in JOBS.values()
+        if job.get("user_id") == user_id
+        and job.get("started_at", 0) > time.time() - 86400
+        and job.get("status") in {"queued", "running", "completed"}
+    )
     if recent_runs >= daily_limit:
         raise HTTPException(status_code=429, detail=f"You've reached today's research limit of {daily_limit} reviews. Come back tomorrow.")
     job_id = str(uuid.uuid4())
