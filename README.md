@@ -261,7 +261,7 @@ pip install -r requirements-evaluation.txt
 python scripts/evaluate_ragas.py
 ```
 
-The runner defaults to three cases to stay within the production API's three-review daily limit. It writes `evaluation/results/latest.json` and `evaluation/results/latest.md`, plus a privacy-conscious aggregate at `public/evaluation-scores.json` for the website. Commit and push that generated public score file to publish the scorecard in Litera's **Evaluation** view. Use `--limit 0` for all six cases only when the selected API has sufficient quota. These model-based scores are validation signals on a small curated set, not an accuracy guarantee or evidence of improvement over a baseline.
+The runner defaults to three cases to stay within the production API's three-review daily limit. It writes `evaluation/results/latest.json` and `evaluation/results/latest.md`. Use `--limit 0` for all six cases only when the selected API has sufficient quota. These model-based scores are validation signals on a small curated set, not an accuracy guarantee or evidence of improvement over a baseline.
 
 ## License
 

@@ -37,9 +37,8 @@ The run writes:
 
 - `evaluation/results/latest.json` — raw questions, references, generated answers, retrieved contexts, per-case scores, aggregates, metadata, and any metric-level errors.
 - `evaluation/results/latest.md` — a compact scorecard suitable for reports and presentations.
-- `public/evaluation-scores.json` — aggregate and per-question scores without generated answer text or retrieved abstracts; the Litera website reads this file.
 
-These outputs are deliberately generated from a live run. They should only be described as measured results after the command completes successfully; failed metrics remain `N/A`, never zero. Commit and push `public/evaluation-scores.json` to publish the scorecard to GitHub Pages. The website's **Evaluation** button is visible from the workspace and sign-in screen, and displays a pending state until measured data is published.
+These outputs are deliberately generated from a live run. They should only be described as measured results after the command completes successfully; failed metrics remain `N/A`, never zero.
 
 ## Current result status
 
