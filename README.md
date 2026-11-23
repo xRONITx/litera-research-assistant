@@ -171,7 +171,8 @@ The repository's `.env.example` contains the main settings. The frontend reads `
 |---|---|
 | `LLM_PROVIDER` | Preferred model provider: `gemini`, `groq`, or `ollama`. Configured providers are tried as fallbacks. |
 | `GEMINI_API_KEY` | Private Gemini key. |
-| `GEMINI_MODEL` | Gemini model name; defaults to `gemini-3.5-flash-lite` in the current code. |
+| `GEMINI_MODEL` | Preferred Gemini model name; defaults to `gemini-3.8-flash`. |
+| `GEMINI_FALLBACK_MODELS` | Optional comma-separated Gemini models tried when the preferred model is unavailable. Defaults to `gemini-3.6-flash,gemini-3.5-flash`. |
 | `GROQ_API_KEY` | Private Groq key. |
 | `GROQ_MODEL` | Groq model name; defaults to `openai/gpt-oss-120b`. |
 | `OLLAMA_ENABLED` | Set to `true` to include Ollama in provider fallback. |

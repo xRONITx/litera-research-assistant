@@ -103,16 +103,45 @@ async def llm(prompt: str, *, json_mode: bool = False) -> str:
         for provider in configured:
             try:
                 if provider == "gemini":
-                    model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
                     body: dict[str, Any] = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.2}}
                     if json_mode:
                         body["generationConfig"]["responseMimeType"] = "application/json"
-                    response = await client.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={os.environ['GEMINI_API_KEY']}", json=body)
-                    if response.status_code == 429:
-                        errors.append("Gemini free-tier limit reached")
-                        continue
-                    response.raise_for_status()
-                    return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    configured_model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+                    fallback_models = [
+                        model.strip()
+                        for model in os.getenv(
+                            "GEMINI_FALLBACK_MODELS",
+                            "gemini-3.6-flash,gemini-3.5-flash",
+                        ).split(",")
+                        if model.strip()
+                    ]
+                    models = list(dict.fromkeys([configured_model, *fallback_models]))
+                    retryable_statuses = {404, 429, 500, 502, 503, 504}
+                    for model in models:
+                        attempts = 2 if model == configured_model else 1
+                        for attempt in range(attempts):
+                            try:
+                                response = await client.post(
+                                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={os.environ['GEMINI_API_KEY']}",
+                                    json=body,
+                                )
+                                if response.status_code in retryable_statuses:
+                                    logger.warning("Gemini model %s returned HTTP %s", model, response.status_code)
+                                    if response.status_code in {500, 502, 503, 504} and attempt == 0:
+                                        await asyncio.sleep(0.75)
+                                        continue
+                                    errors.append(f"Gemini {model} HTTP {response.status_code}")
+                                    break
+                                response.raise_for_status()
+                                return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+                            except httpx.HTTPStatusError as exc:
+                                status = exc.response.status_code
+                                logger.warning("Gemini model %s failed with HTTP %s", model, status)
+                                errors.append(f"Gemini {model} HTTP {status}")
+                                if status in retryable_statuses:
+                                    break
+                                raise
+                    continue
                 if provider == "groq":
                     body = {"model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
                     if json_mode:
