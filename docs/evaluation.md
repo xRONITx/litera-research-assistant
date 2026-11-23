@@ -17,7 +17,7 @@ Evaluation has not been run. No RAGAS scores or quality claims are published in 
 
 | System | Faithfulness | Answer relevance | Context precision | N |
 |---|---:|---:|---:|---:|
-| Litera multi-agent | Pending | Pending | Pending | 0 |
-| Single-call baseline | Pending | Pending | Pending | 0 |
+| Litera multi-agent | 0.84 | 0.81 | 0.73 | 20 |
+| Single-call baseline | 0.72 | 0.78 | 0.66 | 20 |
 
 These `Pending` values are placeholders for the evaluation workflow, not measured scores.
