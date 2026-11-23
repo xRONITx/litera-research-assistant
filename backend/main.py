@@ -107,26 +107,12 @@ async def llm(prompt: str, *, json_mode: bool = False) -> str:
                     body: dict[str, Any] = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.2}}
                     if json_mode:
                         body["generationConfig"]["responseMimeType"] = "application/json"
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={os.environ['GEMINI_API_KEY']}"
-                    response = None
-                    for attempt in range(3):
-                        try:
-                            response = await client.post(url, json=body)
-                        except (httpx.TimeoutException, httpx.ConnectError):
-                            if attempt < 2:
-                                await asyncio.sleep(2 ** attempt)
-                                continue
-                            raise
-                        if response.status_code == 429:
-                            errors.append("Gemini rate limit reached (HTTP 429)")
-                            break
-                        if response.status_code in {500, 502, 503, 504} and attempt < 2:
-                            await asyncio.sleep(2 ** attempt)
-                            continue
-                        response.raise_for_status()
-                        return response.json()["candidates"][0]["content"]["parts"][0]["text"]
-                    if response is not None and response.status_code == 429:
+                    response = await client.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={os.environ['GEMINI_API_KEY']}", json=body)
+                    if response.status_code == 429:
+                        errors.append("Gemini free-tier limit reached")
                         continue
+                    response.raise_for_status()
+                    return response.json()["candidates"][0]["content"]["parts"][0]["text"]
                 if provider == "groq":
                     body = {"model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
                     if json_mode:
@@ -143,15 +129,7 @@ async def llm(prompt: str, *, json_mode: bool = False) -> str:
                     response.raise_for_status()
                     return response.json()["response"]
             except (httpx.HTTPError, KeyError, IndexError) as exc:
-                if isinstance(exc, httpx.HTTPStatusError):
-                    status = exc.response.status_code
-                    detail = exc.response.text[:240]
-                    api_key = os.getenv("GEMINI_API_KEY", "")
-                    if api_key:
-                        detail = detail.replace(api_key, "[redacted]")
-                    errors.append(f"{provider}: HTTP {status}: {detail}")
-                else:
-                    errors.append(f"{provider}: {exc.__class__.__name__}")
+                errors.append(f"{provider}: {exc.__class__.__name__}")
     raise RuntimeError("No configured language model completed the request (" + "; ".join(errors) + "). Check provider status and retry.")
 
 async def planner(state: dict[str, Any]) -> dict[str, Any]:
