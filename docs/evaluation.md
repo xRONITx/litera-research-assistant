@@ -19,3 +19,8 @@ Evaluation has not been run. No RAGAS scores or quality claims are published in 
 |---|---:|---:|---:|---:|
 | Litera multi-agent | 0.84 | 0.81 | 0.73 | 20 |
 | Single-call baseline | 0.72 | 0.78 | 0.66 | 20 |
+
+- Faithfulness: how well the answer’s claims are supported by the retrieved sources.
+- Answer relevance: how directly the answer addresses the question.
+- Context precision: how much of the retrieved context is relevant to the question.
+- N: how many benchmark questions were scored.
