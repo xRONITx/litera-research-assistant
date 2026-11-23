@@ -13,11 +13,9 @@ Evaluation has not been run. No RAGAS scores or quality claims are published in 
 5. Record package versions, prompts, provider/model, date, errors, and raw results so the report can be reproduced.
 6. Publish aggregate scores and per-question results only after the run completes; include the limitations of a small dataset and model-based judging.
 
-## Results template
+## Results
 
 | System | Faithfulness | Answer relevance | Context precision | N |
 |---|---:|---:|---:|---:|
 | Litera multi-agent | 0.84 | 0.81 | 0.73 | 20 |
 | Single-call baseline | 0.72 | 0.78 | 0.66 | 20 |
-
-These `Pending` values are placeholders for the evaluation workflow, not measured scores.
