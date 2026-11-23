@@ -19,7 +19,7 @@
 - [API](#api)
 - [Deployment](#deployment)
 - [Data, security, and limitations](#data-security-and-limitations)
-- [RAGAS evaluation](#ragas-evaluation)
+- [Evaluation status](#evaluation-status)
 - [License](#license)
 
 ## What Litera does
@@ -73,7 +73,6 @@ The planner, analyst, and critic call the configured language-model provider. Ac
 | Academic sources | Semantic Scholar, OpenAlex, Crossref | Search for paper metadata and abstracts with fallback paths |
 | Context retrieval | ChromaDB | Ranks available abstracts for the review context |
 | Language models | Gemini, Groq, optional Ollama | Plan searches, synthesize evidence, and review the draft |
-| Quality evaluation | RAGAS, Google Gemini judge and embeddings | Score faithfulness, answer relevance, and context precision on a curated benchmark |
 | Authentication | Supabase Auth | Email sign-up/sign-in and API bearer-token validation |
 | Web hosting | GitHub Pages | Publishes the frontend from the `main` branch |
 | API hosting | Render | Runs the FastAPI service defined by `render.yaml` |
@@ -248,20 +247,9 @@ The live Litera deployment linked above is already configured. Its Render free-t
 - The sample review is fixed demonstration content; opening it does not perform a live search.
 - Model and academic-index quotas can be reached, and free hosting can sleep or impose limits.
 
-## RAGAS evaluation
+## Evaluation status
 
-Litera includes a live RAGAS benchmark with six curated research questions and references. It evaluates the deployed multi-agent API's faithfulness, answer relevance, and reference-based context precision. The evaluator records exact answers and retrieved contexts alongside per-case and aggregate scores, model/package versions, API revision, and limitations.
-
-The benchmark runner is [`scripts/evaluate_ragas.py`](scripts/evaluate_ragas.py), with cases in [`evaluation/cases.jsonl`](evaluation/cases.jsonl) and the full protocol in [`docs/evaluation.md`](docs/evaluation.md). It uses Google Gemini as the judge and Gemini embeddings for answer relevance; evaluator credentials remain local and are never needed by the deployed product.
-
-No measured scorecard is included yet because this workspace did not have a judge API key or authenticated API session configured. Run the benchmark after setting local `RAGAS_GOOGLE_API_KEY`, `LITERA_API_URL`, and (for authenticated APIs) `LITERA_ACCESS_TOKEN`:
-
-```powershell
-pip install -r requirements-evaluation.txt
-python scripts/evaluate_ragas.py
-```
-
-The runner defaults to three cases to stay within the production API's three-review daily limit. It writes `evaluation/results/latest.json` and `evaluation/results/latest.md`. Use `--limit 0` for all six cases only when the selected API has sufficient quota. These model-based scores are validation signals on a small curated set, not an accuracy guarantee or evidence of improvement over a baseline.
+The evaluation protocol is documented in [`docs/evaluation.md`](docs/evaluation.md). No RAGAS scores, benchmark results, or accuracy claims have been published; the evaluation remains pending. The current implementation has build and backend syntax workflows, but a measured quality evaluation is still future work.
 
 ## License
 
