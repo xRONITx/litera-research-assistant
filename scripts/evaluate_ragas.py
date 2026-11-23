@@ -118,7 +118,7 @@ async def evaluate(args: argparse.Namespace) -> int:
     base_url = (args.api_url or os.getenv("LITERA_API_URL") or "https://litera-api-9rml.onrender.com").rstrip("/")
     token = os.getenv("LITERA_ACCESS_TOKEN")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
-    model = args.judge_model or os.getenv("RAGAS_JUDGE_MODEL", "gemini-2.5-flash")
+    model = args.judge_model or os.getenv("RAGAS_JUDGE_MODEL", "gemini-3.5-flash-lite")
     embedding_model = os.getenv("RAGAS_EMBEDDING_MODEL", "gemini-embedding-001")
 
     genai_client = genai.Client(api_key=key)
@@ -242,7 +242,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api-url", help="Litera API base URL (defaults to LITERA_API_URL or the production API).")
-    parser.add_argument("--judge-model", help="Gemini judge model (defaults to RAGAS_JUDGE_MODEL or gemini-2.5-flash).")
+    parser.add_argument("--judge-model", help="Gemini judge model (defaults to RAGAS_JUDGE_MODEL or gemini-3.5-flash-lite).")
     parser.add_argument("--limit", type=int, default=3, help="Number of benchmark queries; defaults to 3 to respect the hosted API's daily limit. Use 0 for all cases.")
     parser.add_argument("--timeout", type=int, default=600, help="Max seconds to wait for each Litera API job (default: 600).")
     return parser.parse_args()
