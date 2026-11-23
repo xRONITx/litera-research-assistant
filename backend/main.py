@@ -4,6 +4,7 @@ import asyncio
 import html
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -402,18 +403,46 @@ def vector_context(papers: list[dict[str, Any]], question: str) -> list[dict[str
     passages = [p for p in papers if p.get("abstract")]
     if not passages:
         return papers[:8]
-    try:
-        import chromadb
-        client = chromadb.Client()
-        collection = client.create_collection(name=f"review_{uuid.uuid4().hex[:12]}")
-        docs = [f"{p.get('title','')}\n{p.get('abstract','')}" for p in passages]
-        collection.add(ids=[str(i) for i in range(len(docs))], documents=docs, metadatas=[{"paper_id": str(i)} for i in range(len(docs))])
-        result = collection.query(query_texts=[question], n_results=min(12, len(docs)))
-        indices = [int(x) for x in result["ids"][0]]
-        collection.delete(ids=[str(i) for i in range(len(docs))])
-        return [passages[i] for i in indices]
-    except (ImportError, ValueError, RuntimeError):
+    # Keep request handling lightweight on Render's small instances. Chroma's
+    # default local embedder downloads and initializes a large ONNX model on
+    # first use, which can block health checks. Rank the already-retrieved
+    # abstracts using corpus-aware lexical relevance instead.
+    stop_words = {
+        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+        "how", "in", "into", "is", "it", "of", "on", "or", "that", "the",
+        "their", "this", "to", "was", "were", "what", "when", "where",
+        "which", "who", "why", "with",
+    }
+
+    def tokens(value: str) -> set[str]:
+        return {
+            token for token in re.findall(r"[a-z0-9]{2,}", value.casefold())
+            if token not in stop_words
+        }
+
+    query_terms = tokens(question)
+    if not query_terms:
         return passages[:12]
+
+    document_terms = [tokens(f"{p.get('title', '')} {p.get('abstract', '')}") for p in passages]
+    document_frequency = {
+        term: sum(term in terms for terms in document_terms)
+        for term in query_terms
+    }
+    scored = []
+    for index, (paper, terms) in enumerate(zip(passages, document_terms)):
+        title_terms = tokens(paper.get("title", ""))
+        score = sum(
+            (1.0 + (1.5 if term in title_terms else 0.0))
+            * (1.0 + math.log((len(passages) + 1) / (document_frequency[term] + 1)))
+            for term in query_terms if term in terms
+        )
+        scored.append((score, index))
+
+    if not any(score for score, _ in scored):
+        return passages[:12]
+    selected = sorted(scored, key=lambda item: (-item[0], item[1]))[:12]
+    return [passages[index] for _, index in selected]
 
 def source_record(p: dict[str, Any], n: int) -> dict[str, Any]:
     ids = p.get("externalIds") or {}
