@@ -1,0 +1,5 @@
+# Optional benchmark dependencies; install on a research/evaluation machine only.
+httpx>=0.28,<1.0
+python-dotenv>=1.0,<2.0
+ragas>=0.4.1,<0.5
+google-genai>=1.0.0,<2.0.0
