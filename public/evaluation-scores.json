@@ -1,0 +1,14 @@
+{
+  "status": "pending",
+  "evaluated_at": null,
+  "api_revision": null,
+  "judge_model": null,
+  "embedding_model": null,
+  "case_count": 0,
+  "metrics": {
+    "faithfulness": null,
+    "answer_relevance": null,
+    "context_precision": null
+  },
+  "cases": []
+}

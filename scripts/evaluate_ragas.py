@@ -17,6 +17,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CASES_PATH = ROOT / "evaluation" / "cases.jsonl"
 RESULTS_DIR = ROOT / "evaluation" / "results"
+PUBLIC_RESULTS_PATH = ROOT / "public" / "evaluation-scores.json"
 
 
 def load_cases(limit: int) -> list[dict[str, Any]]:
@@ -186,9 +187,22 @@ async def evaluate(args: argparse.Namespace) -> int:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     json_path = RESULTS_DIR / "latest.json"
     md_path = RESULTS_DIR / "latest.md"
+    public_summary = {
+        "status": payload["status"],
+        "evaluated_at": payload["evaluated_at"],
+        "api_revision": payload["api_revision"],
+        "judge_model": payload["judge_model"],
+        "embedding_model": payload["embedding_model"],
+        "case_count": payload["case_count"],
+        "metrics": payload["metrics"],
+        "cases": [{"case_id": row["case_id"], "question": row["question"], "source_count": row["source_count"], "scores": row["scores"]} for row in rows],
+    }
+    PUBLIC_RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     md_path.write_text(render_markdown(payload), encoding="utf-8")
+    PUBLIC_RESULTS_PATH.write_text(json.dumps(public_summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"\nRAGAS results written to:\n  {json_path}\n  {md_path}")
+    print(f"Public website summary written to:\n  {PUBLIC_RESULTS_PATH}")
     for name, value in aggregates.items():
         print(f"{name}: {'N/A' if value is None else f'{value:.4f}'}")
     return 0 if payload["status"] == "complete" else 2
